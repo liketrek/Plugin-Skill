@@ -86,12 +86,15 @@ with **routes** (polled by your client or an external trigger), not jobs. See
    only checked for presence). A host listed in `egress[]` but not granted as
    `http:outbound:<host>` is **silently blocked at runtime**. Keep both lists
    identical. Bare `http:outbound` alone reaches nothing.
-4. **`ctx.trips`, `ctx.users`, and `ctx.ws.*` work only inside route handlers**
-   — they need the acting user the host binds from the request; from `onLoad`
-   there is no user → `RESOURCE_FORBIDDEN`. `asUserId` is ignored; `ctx.users`
-   returns only self or a trip co-member (not any account); `ctx.ws.broadcastToUser`
-   can target only the acting user — and **none of these broadcasts reach your
-   own iframe** (poll your route via `trek:invoke` instead).
+4. **`ctx.trips`, `ctx.users`, `ctx.costs`, and `ctx.ws.*` work only inside route
+   handlers** — they need the acting user the host binds from the request; from
+   `onLoad` there is no user → `RESOURCE_FORBIDDEN`. `asUserId` is ignored;
+   `ctx.users` returns only self or a trip co-member (not any account);
+   `ctx.ws.broadcastToUser` can target only the acting user — and **none of these
+   broadcasts reach your own iframe** (poll your route via `trek:invoke` instead).
+   `ctx.costs.*` **(≥3.2.1)** also needs the Costs (budget) addon enabled, and
+   `ctx.costs.create` additionally needs the acting user's `budget_edit`
+   permission (it's the only plugin path that writes core TREK data).
 5. **No native modules** — `.node`, `binding.gyp`, `prebuilds/` are refused at
    pack, CI, and install time. `nativeModules` must be `false`/absent.
 6. **Git tag == manifest `version`** (`v1.2.3` ↔ `"version": "1.2.3"`), and the

@@ -89,6 +89,11 @@ export interface PluginContext {
     migrate(id: string, sql: string): Promise<{ applied: boolean }>;
   };
   trips: { getById(tripId, asUserId): Promise<unknown>; getPlaces(...): …; getReservations(...): … };
+  costs: {                                               // (≥3.2.1) budget items
+    getByTrip(tripId: number): Promise<unknown[]>;
+    listMine(): Promise<unknown[]>;
+    create(tripId: number, input: Record<string, unknown>): Promise<unknown>;
+  };
   users: { getById(id: number): Promise<unknown> };
   ws: {
     broadcastToTrip(tripId: number, event: string, data): Promise<void>;
@@ -105,6 +110,8 @@ export interface PluginContext {
 | `ctx.db` | Your **own** SQLite file (never `trek.db`). `migrate(id, sql)` runs a keyed, idempotent migration once per id. Refused SQL: `ATTACH` / `DETACH` / `VACUUM` / `PRAGMA` / **`RECURSIVE`**. **Caps:** DB ≤ **256 MB** (further writes fail `SQLITE_FULL`), a single `query` returns ≤ **100 000 rows**, SQL text ≤ **100 000 chars**. | `db:own` |
 | `ctx.trips` | Read-only; **route handlers only**. The host binds the acting user from the request and membership-checks every read. `asUserId` is **ignored** (can't impersonate). From `onLoad`/`jobs` (no user) → `RESOURCE_FORBIDDEN`. | `db:read:trips` |
 | `ctx.users.getById` | **Route handlers only** (needs acting user). Returns **only the acting user themselves or a user who co-members a trip with them** (`id, username, display_name, avatar`) — **not** a free lookup of any account by id; others → `RESOURCE_FORBIDDEN`. | `db:read:users` |
+| `ctx.costs.getByTrip` / `listMine` **(≥3.2.1)** | "Costs" = budget items. **Route handlers only** (host-bound acting user; `onLoad`/jobs → `RESOURCE_FORBIDDEN`). `getByTrip` membership-checks the trip; `listMine` returns items across every trip the user can access. Requires the **Costs addon enabled** (else `RESOURCE_FORBIDDEN`: "the costs addon is disabled"). | `db:read:costs` |
+| `ctx.costs.create(tripId, input)` **(≥3.2.1)** | **Route handlers only.** Creates a budget item (frozen FX + members/payers) and **broadcasts `budget:created`** to the core app. Requires addon enabled **+** trip access **+** the acting user's **`budget_edit`** permission; input is zod-validated (`name` required, else `BAD_PARAMS`). The **only** plugin path that writes core TREK data. | `db:write:costs` |
 | `ctx.ws.broadcastToTrip` | **Route handlers only.** The acting user must be a member of the target trip. Event to the **core TREK app's** trip-room clients as `plugin:<id>:<event>`. | `ws:broadcast:trip` |
 | `ctx.ws.broadcastToUser` | **Route handlers only.** Target **must equal the acting user** (`userId === req.user.id`) — you can only push to the acting user's **own** connections. Event to core clients as `{ type: 'plugin:<id>', event, ...data }`. | `ws:broadcast:user` |
 | `ctx.config` | **Instance-scoped** settings, decrypted and **frozen at activation** (`secret:true` arrive decrypted, server-side only). Not per-user; not hot-reloaded — change requires deactivate→activate. `scope:user` settings are **not** surfaced here in 3.2.0. | — |

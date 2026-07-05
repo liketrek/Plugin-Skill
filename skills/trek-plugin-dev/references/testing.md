@@ -162,9 +162,12 @@ when a grant is missing.
 export interface MockHostOptions {
   grants?: string[];                        // permissions to grant the ctx
   config?: Record<string, unknown>;         // becomes ctx.config (frozen)
+  actingUserId?: number;                    // (≥3.2.1) host-bound user — required for any costs.*
+  budgetAddonEnabled?: boolean;             // (≥3.2.1) default true; false → RESOURCE_FORBIDDEN
   /** Fixtures keyed by trip id; `members` gates access like the real host. */
   trips?: Record<number, { members: number[]; data?: unknown;
-                           places?: unknown[]; reservations?: unknown[] }>;
+                           places?: unknown[]; reservations?: unknown[];
+                           costs?: unknown[]; canEditCosts?: boolean }>;  // (≥3.2.1)
   users?: Record<number, unknown>;
   /** Canned db.query results, keyed by the EXACT sql string. */
   queryResults?: Record<string, unknown[]>;
@@ -210,6 +213,11 @@ Notes:
 - `calls` records the attempt **even when the grant is missing** (the entry is
   pushed before the permission check throws), so a `PERMISSION_DENIED` call still
   appears in `calls`.
+- **(≥3.2.1) Testing `ctx.costs.*`:** set `actingUserId` (the host-bound user)
+  and seed `trips[id].costs`. `canEditCosts: false` simulates a missing
+  `budget_edit` for `create`; `budgetAddonEnabled: false` simulates the addon
+  being off (both → `RESOURCE_FORBIDDEN`). Cover happy-path, missing-grant,
+  missing-`budget_edit`, and addon-off cases.
 - Mock ctx id is `mock-plugin`; `config` is frozen like the real one.
 - Differences vs the real host worth knowing: the mock's `trips.getById`
   honors the `asUserId` argument for membership checks (that's the point of
