@@ -43,8 +43,15 @@ plugins).
 
 ## `pack` details (also enforced at install and in CI)
 
-Included in `plugin.zip`: `trek-plugin.json`, `README.md`, `LICENSE`(.md),
-`package.json` at the root; the **entire** `server/` and `client/` trees.
+Included in `plugin.zip`: **only** these root files — `trek-plugin.json`,
+`README.md`, `LICENSE`(.md), `package.json` — plus the **entire** `server/` and
+`client/` trees. **Any other top-level file or dir is silently dropped, and
+`validate` won't warn.** So bundle runtime assets (datasets, JSON) **inside
+`server/` or `client/`** — a natural-looking root `data/` required as
+`../data/x.json` packs clean, passes validate, then crashes with
+`MODULE_NOT_FOUND` **after install**. Keep them under `server/data/…` and require
+`./data/x.json`.
+
 Watch for stray large assets: a leftover raster (e.g. a multi-MB `client/*.svg`
 with an embedded photo) is shipped verbatim and bloats the artifact. Prefer
 inline SVG in the client and delete unused files before packing.
