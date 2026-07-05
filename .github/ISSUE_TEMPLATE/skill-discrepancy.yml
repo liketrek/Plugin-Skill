@@ -1,0 +1,82 @@
+name: Skill inaccuracy / source discrepancy
+description: A claim in the trek-plugin-dev skill contradicts TREK's actual source or behavior.
+title: "[discrepancy] "
+labels: ["discrepancy"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for improving the skill. Its docs are verified against TREK's source,
+        so the most useful reports pin down **exactly** where a claim diverges from
+        reality — and are **honest about the evidence** (an untested inference is not
+        a confirmed discrepancy).
+  - type: input
+    id: location
+    attributes:
+      label: Where in the skill?
+      description: File + section/heading.
+      placeholder: "references/client-bridge.md → What the CSP blocks"
+    validations:
+      required: true
+  - type: textarea
+    id: claim
+    attributes:
+      label: What the skill says
+      description: Quote the exact wording.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What actually happens
+      description: The correct behavior or fact.
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: How do you know? (evidence type)
+      description: Be honest — this is the single most important field.
+      options:
+        - Read it in the TREK source (cite path + commit below)
+        - Observed in a real, running TREK instance
+        - Observed in `trek-plugin dev`
+        - Observed in a custom host harness (no real TREK CSP/sandbox)
+        - Inferred / not yet confirmed
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: Source citation and/or reproduction
+      description: TREK repo path + commit/tag (e.g. `server/src/nest/plugins/plugin-frame.controller.ts@v3.2.1`), or exact steps to reproduce.
+    validations:
+      required: false
+  - type: input
+    id: trek-version
+    attributes:
+      label: TREK version
+      placeholder: "e.g. 3.2.1"
+    validations:
+      required: false
+  - type: input
+    id: sdk-version
+    attributes:
+      label: trek-plugin-sdk version
+      placeholder: "e.g. 1.2.1"
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: OS (only if relevant to tooling)
+      placeholder: "e.g. Windows 11, macOS 14, Ubuntu 24.04"
+    validations:
+      required: false
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested correction (optional)
+      description: Proposed wording, if you have one.
+    validations:
+      required: false

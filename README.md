@@ -72,6 +72,21 @@ runtime), the [TREK wiki](https://github.com/mauriceboe/TREK/wiki)
 CI scripts, koffi example). Community plugins are third-party software — see
 the registry's security notes.
 
+## Feedback & corrections
+
+This skill is documentation verified against TREK's source — but TREK evolves.
+When an agent using the skill hits a claim that contradicts the real TREK source
+or a running instance (or a gap that cost time), it will hand you a **ready-made
+feedback block, already filled in**. Just
+[open an issue](https://github.com/fbnlrz/trek-plugin-skill/issues/new/choose),
+pick **📋 Paste an agent-generated report**, paste, and submit — that's the whole
+job. Manual **Skill discrepancy** and **Missing guidance** forms exist too.
+
+One thing we ask you to keep honest: the block's **Evidence** line — read in the
+source, seen on a real instance, seen in `trek-plugin dev`, seen in a custom
+harness (no real CSP/sandbox), or merely inferred. An inference isn't a confirmed
+discrepancy; several reported "bugs" have turned out to be test-method artifacts.
+
 ## License
 
 MIT (this skill). TREK and TREK-Plugins are licensed by their own authors.

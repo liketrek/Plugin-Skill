@@ -109,6 +109,32 @@ is pointless.)
 Model README: `plugin-sdk/examples/koffi/README.md` (TREK repo) — note its
 Permissions section is a table with one row per permission explaining why.
 
+### Store preview image (`docs/screenshot.png`)
+
+CI enforces **no dimensions** — `check-readme.mjs` only checks that an image
+reference in the README resolves to a real image at the pinned commit. Size it
+for how the store renders it. The client's `Screenshot` component
+(`AdminPluginsPanel.tsx`) uses `object-cover` (scales to fill, **crops**,
+centres) in two different boxes:
+
+* **Discover card:** `aspect-[16/10]` container.
+* **Detail popup:** `aspect-[16/9]` container.
+
+So ship a **16:9 image (e.g. 1600×900** — what the published `trek-plugin-koffi`
+repo uses): the detail popup shows it in full, while the 16:10 card crops a
+little off the **left/right**. Keep the hero/mascot and any key content
+**centred** so the card crop never cuts it. Commit it under `docs/`; it is
+fetched from your repo at the pinned commit and is intentionally **not** shipped
+in `plugin.zip`. (The SDK's in-repo `examples/koffi` screenshot is a much wider
+~1226×369 banner — fine as a repo illustration, but a true 16:9 fills the store
+card cleanly.)
+
+Because the frame can only draw inline SVG or `data:`/`blob:` images (no bundled
+raster files by path, no external URLs — see
+[client-bridge.md](client-bridge.md)), a clean way to make this image is to
+render your inline-SVG artwork large and centred and screenshot it via the host
+harness in [testing.md](testing.md).
+
 ## Signing (optional, recommended)
 
 `sha256` proves the registry-vouched bytes; a signature additionally proves
@@ -131,6 +157,40 @@ Rules: the key must stay **stable across versions**; once a plugin has shipped
 signed, an unsigned or re-keyed update is refused until an admin explicitly
 re-trusts (`submit --sign` guards against accidental key switches). Unsigned
 plugins install on sha256 alone.
+
+## When `submit` / `publish` can't open the PR (do it by hand)
+
+The automated PR step can fail with **`error: remote upstream already exists`**.
+Cause (confirmed in `src/cli/submit.ts`): `submit` clones your fork with
+`gh repo clone`, which auto-adds an `upstream` remote for a fork, then
+unconditionally runs `git remote add upstream …` again. The **release itself is
+already done** at that point — only the PR is missing. Open the one-file PR
+manually:
+
+```bash
+# 1. Generate the entry INSIDE the plugin repo — `entry` resolves commitSha via
+#    `git rev-parse <tag>`, so the tag must be local here:
+cd my-plugin
+npx trek-plugin-sdk entry --repo you/my-plugin --tag v1.0.0 --out entry.json
+
+# 2. Fork + clone the registry (the fork clone gets `upstream` automatically;
+#    omit --remote — gh rejects it when a repo argument is given):
+cd ..
+gh repo fork mauriceboe/TREK-Plugins --clone
+cd TREK-Plugins && git checkout -b add-<id>
+
+# 3. Drop the entry at the required path and PR ONLY that one file:
+mkdir -p registry/plugins
+cp ../my-plugin/entry.json registry/plugins/<id>.json
+git add registry/plugins/<id>.json
+git commit -m "Add <id>"
+git push -u origin add-<id>
+gh pr create --repo mauriceboe/TREK-Plugins --fill
+```
+
+Prerequisite `submit`/`publish`/`release` assume silently: **`gh` installed and
+authenticated** (`gh auth status`). A `spawnSync gh ENOENT` means `gh` isn't on
+PATH (Windows: `winget install --id GitHub.cli -e`, then reopen the shell).
 
 ## Updates
 

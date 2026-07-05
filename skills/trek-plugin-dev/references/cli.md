@@ -26,7 +26,10 @@ npx trek-plugin-sdk <command> [args]
 ## `pack` details (also enforced at install and in CI)
 
 Included in `plugin.zip`: `trek-plugin.json`, `README.md`, `LICENSE`(.md),
-`package.json` at the root; the `server/` and `client/` trees.
+`package.json` at the root; the **entire** `server/` and `client/` trees.
+Watch for stray large assets: a leftover raster (e.g. a multi-MB `client/*.svg`
+with an embedded photo) is shipped verbatim and bloats the artifact. Prefer
+inline SVG in the client and delete unused files before packing.
 
 Excluded: `node_modules`, `.git`, `.ts` sources, `.map` files — and **`docs/`
 intentionally** (the store fetches `docs/screenshot.png` from your repo at the

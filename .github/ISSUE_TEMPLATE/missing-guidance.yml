@@ -1,0 +1,42 @@
+name: Missing or unclear guidance
+description: The skill doesn't cover something you hit while building a TREK plugin, or a section is confusing.
+title: "[gap] "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: topic
+    attributes:
+      label: Topic / area
+      placeholder: "e.g. OAuth settings flow, ws.broadcast, cron jobs, page navigation"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: gap
+    attributes:
+      label: What was missing or unclear?
+    validations:
+      required: true
+  - type: dropdown
+    id: evidence
+    attributes:
+      label: If you found the answer yourself, how?
+      options:
+        - Read it in the TREK source
+        - Real TREK instance
+        - "`trek-plugin dev`"
+        - Custom harness
+        - Still unknown
+    validations:
+      required: false
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed addition (optional)
+    validations:
+      required: false

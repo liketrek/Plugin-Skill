@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: TREK app / plugin runtime / trek-plugin-sdk bug
+    url: https://github.com/mauriceboe/TREK/issues
+    about: For bugs in TREK itself, the plugin runtime, or the SDK — not this skill's docs.
+  - name: TREK-Plugins registry or CI issue
+    url: https://github.com/mauriceboe/TREK-Plugins/issues
+    about: For the community registry, its CI gates, or a plugin listing problem.
