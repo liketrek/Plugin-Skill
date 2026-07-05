@@ -112,18 +112,28 @@ Permissions section is a table with one row per permission explaining why.
 ### Store preview image (`docs/screenshot.png`)
 
 CI enforces **no dimensions** — `check-readme.mjs` only checks that an image
-reference in the README resolves to a real image at the pinned commit. For
-sizing, model it on a shipped plugin: the SDK's `koffi` example ships a **wide
-banner** (~1226×369). Keep the hero/mascot and any key content **centred** — the
-Discover store card is reported to crop the left/right edges while the detail
-popup shows the full image (an observed store-UI behaviour — confirm against your
-instance). Commit it under `docs/`; it is fetched from your repo at the pinned
-commit and is intentionally **not** shipped in `plugin.zip`.
+reference in the README resolves to a real image at the pinned commit. Size it
+for how the store renders it. The client's `Screenshot` component
+(`AdminPluginsPanel.tsx`) uses `object-cover` (scales to fill, **crops**,
+centres) in two different boxes:
+
+* **Discover card:** `aspect-[16/10]` container.
+* **Detail popup:** `aspect-[16/9]` container.
+
+So ship a **16:9 image (e.g. 1600×900** — what the published `trek-plugin-koffi`
+repo uses): the detail popup shows it in full, while the 16:10 card crops a
+little off the **left/right**. Keep the hero/mascot and any key content
+**centred** so the card crop never cuts it. Commit it under `docs/`; it is
+fetched from your repo at the pinned commit and is intentionally **not** shipped
+in `plugin.zip`. (The SDK's in-repo `examples/koffi` screenshot is a much wider
+~1226×369 banner — fine as a repo illustration, but a true 16:9 fills the store
+card cleanly.)
 
 Because the frame can only draw inline SVG or `data:`/`blob:` images (no bundled
-raster files, no external URLs — see [client-bridge.md](client-bridge.md)), a
-clean way to make this image is to render your inline-SVG artwork large and
-centred and screenshot it via the host harness in [testing.md](testing.md).
+raster files by path, no external URLs — see
+[client-bridge.md](client-bridge.md)), a clean way to make this image is to
+render your inline-SVG artwork large and centred and screenshot it via the host
+harness in [testing.md](testing.md).
 
 ## Signing (optional, recommended)
 
@@ -163,7 +173,8 @@ manually:
 cd my-plugin
 npx trek-plugin-sdk entry --repo you/my-plugin --tag v1.0.0 --out entry.json
 
-# 2. Fork + clone the registry (the fork clone gets `upstream` automatically):
+# 2. Fork + clone the registry (the fork clone gets `upstream` automatically;
+#    omit --remote — gh rejects it when a repo argument is given):
 cd ..
 gh repo fork mauriceboe/TREK-Plugins --clone
 cd TREK-Plugins && git checkout -b add-<id>
