@@ -24,6 +24,21 @@ asset, never GitHub's auto-generated source archives (wrong layout, unstable
 bytes). The registry pins the asset's **sha256** — released bytes are
 immutable in practice; fix things in a new version.
 
+> **Remote-only tag trap:** if you let `gh release create vX.Y.Z …` create the
+> tag (instead of tagging locally and pushing), the tag exists **only on
+> GitHub** — your local repo doesn't have it, and a following `entry`/`release`
+> fails with `could not resolve the commit for tag "vX.Y.Z" (is it pushed?)`.
+> Run **`git fetch origin --tags`** between the release and `entry`, or pass
+> `--commit <sha>` to override.
+
+> **Reproducible artifacts (CRLF trap):** `pack` zips your **working-tree**
+> files, so on Windows with `core.autocrlf=true` the same commit produces a
+> **different sha256 and size** than an LF checkout. Harmless as long as you
+> upload the exact zip you packed and let `entry` hash that same asset — but it
+> surprises anyone re-packing on another machine or comparing hashes. For
+> cross-platform reproducibility commit a `.gitattributes` with
+> `* text=auto eol=lf`.
+
 ## Registry entry schema (`registry/plugins/<id>.json`)
 
 Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
@@ -183,8 +198,10 @@ manually:
 
 ```bash
 # 1. Generate the entry INSIDE the plugin repo — `entry` resolves commitSha via
-#    `git rev-parse <tag>`, so the tag must be local here:
+#    `git rev-parse <tag>`, so the tag must be local here. If gh created the
+#    tag remotely, fetch it first:
 cd my-plugin
+git fetch origin --tags
 npx trek-plugin-sdk entry --repo you/my-plugin --tag v1.0.0 --out entry.json
 
 # 2. Fork + clone the registry (the fork clone gets `upstream` automatically;
@@ -201,6 +218,17 @@ git commit -m "Add <id>"
 git push -u origin add-<id>
 gh pr create --repo mauriceboe/TREK-Plugins --fill
 ```
+
+Manual-path snags:
+
+- **Fork/clone already exists:** `gh repo fork mauriceboe/TREK-Plugins --clone`
+  fails (`already exists … not an empty directory`, exit 128) if you forked or
+  cloned before. Reuse the existing clone instead: `cd TREK-Plugins && git fetch
+  upstream main && git checkout -B add-<id> upstream/main` (or `gh repo sync`).
+- **PowerShell 5.1 has no `&&`** — it's a parser error, so a chained
+  `git tag … && git push …` runs *neither* command (which is exactly how you end
+  up without a local tag → the remote-only-tag trap above). Run the commands on
+  separate lines, or use PowerShell 7+.
 
 Prerequisite `submit`/`publish`/`release` assume silently: **`gh` installed and
 authenticated** (`gh auth status`). A `spawnSync gh ENOENT` means `gh` isn't on

@@ -73,6 +73,7 @@ By hand (no `gh`, manual PR):
 npx trek-plugin-sdk validate .
 npx trek-plugin-sdk pack .
 # create the GitHub release yourself, attach plugin.zip, then:
+git fetch origin --tags   # if gh created the tag remotely, entry needs it locally
 npx trek-plugin-sdk entry --repo you/trek-plugin-my-widget --tag v1.0.0 \
   --out registry/plugins/my-widget.json
 npx trek-plugin-sdk preflight --repo you/trek-plugin-my-widget --tag v1.0.0
@@ -88,6 +89,8 @@ npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.1.0 --sign
 ```
 
 Failure behavior worth knowing: the git tag must **equal** the manifest
-`version` (v-prefixed); `entry` fails if the tag doesn't resolve or the zip is
-missing; `preflight`/CI fail on any gate in
+`version` (v-prefixed); `entry` needs the tag **locally** — after
+`gh release create` made it remotely, `git fetch origin --tags` first (or pass
+`--commit <sha>`), else it fails with `could not resolve the commit for tag
+"vX.Y.Z" (is it pushed?)`; `preflight`/CI fail on any gate in
 [publishing.md](publishing.md#ci-gates).
