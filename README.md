@@ -40,24 +40,15 @@ skills/trek-plugin-dev/
 
 ## Install
 
-### Local — CLI, Desktop, or IDE
+### Add the skill to your repo (recommended)
 
-The interactive `/plugin` command works in the local Claude Code CLI, the
-Desktop app, and the IDE extensions:
+Committing the skill config **into the repo you build your plugin in** (e.g.
+your `trek-plugin-<id>` repo) makes it load automatically for **every session
+on that repo — local and Claude Code web — and for every collaborator**. Two
+ways; pick one:
 
-```
-/plugin marketplace add fbnlrz/trek-plugin-skill
-/plugin install trek-plugin-dev@trek-plugin-skill
-```
-
-### Claude Code on the web (claude.ai/code)
-
-`/plugin` is **not available in web sessions** (it opens an interactive picker).
-On the web you enable the skill through repo config instead — pick one:
-
-**Option A — declare the marketplace in your repo** (recommended; auto-loads for
-every web session on that repo). Commit `.claude/settings.json` to the **repo you
-run web sessions on** (e.g. your `trek-plugin-<id>` repo):
+**Way 1 — declare the marketplace** (stays up to date automatically). Commit
+this as `.claude/settings.json` in your repo root:
 
 ```json
 {
@@ -70,34 +61,47 @@ run web sessions on** (e.g. your `trek-plugin-<id>` repo):
 }
 ```
 
-The `enabledPlugins` entry is `<plugin>@<marketplace-key>`, so it must match the
-key you used under `extraKnownMarketplaces`.
+The `enabledPlugins` entry is `<plugin>@<marketplace-key>` — it must match the
+key under `extraKnownMarketplaces`. Every new session then installs the latest
+skill from this repo's `main`.
 
-**Option B — vendor the skill into your repo** (simplest, no marketplace).
-Copy the skill folder into the repo you work on; web sessions auto-load
-`.claude/skills/**/SKILL.md`:
+**Way 2 — vendor the files** (no marketplace, no network needed at session
+start; you update by re-copying). Copy the skill folder into your repo —
+sessions auto-load `.claude/skills/**/SKILL.md`:
 
 ```bash
-cp -r skills/trek-plugin-dev /path/to/your-repo/.claude/skills/
+git clone --depth 1 https://github.com/fbnlrz/trek-plugin-skill /tmp/tps
+mkdir -p /path/to/your-repo/.claude/skills
+cp -r /tmp/tps/skills/trek-plugin-dev /path/to/your-repo/.claude/skills/
+cd /path/to/your-repo && git add .claude && git commit -m "Add trek-plugin-dev skill"
 ```
 
-Web caveats: the session's network access must be **Trusted** or **Full** so it
-can reach `github.com`; the marketplace must be on the repo's **default branch**
-(it is — `main`); **user-scoped** plugins (`~/.claude/settings.json`) do *not*
-carry into web sessions, so declare them in the **repo's** `.claude/settings.json`;
-and start a **new** web session after committing config (resuming reuses cached
-config). Docs:
+Then just start a session on the repo — done.
+
+### Local one-off — CLI, Desktop, or IDE (user-scoped)
+
+If you'd rather install it for **yourself** instead of a repo, the interactive
+`/plugin` command works in the local CLI, Desktop app, and IDE extensions:
+
+```
+/plugin marketplace add fbnlrz/trek-plugin-skill
+/plugin install trek-plugin-dev@trek-plugin-skill
+```
+
+Or copy the folder to your user skills dir: `cp -r skills/trek-plugin-dev
+~/.claude/skills/`. **Note:** user-scoped installs do *not* carry into Claude
+Code web sessions — for web, use the repo method above.
+
+### Claude Code on the web (claude.ai/code)
+
+`/plugin` is **not available in web sessions** (it opens an interactive picker) —
+use **"Add the skill to your repo"** above; both ways work on the web. Web
+caveats: the session's network access must be **Trusted** or **Full** so it can
+reach `github.com` (Way 1); the marketplace must be on this repo's **default
+branch** (it is — `main`); and start a **new** web session after committing the
+config (resuming reuses cached config). Docs:
 [Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) ·
 [Discover plugins](https://code.claude.com/docs/en/discover-plugins).
-
-### Plain skill (any Claude Code)
-
-Or just copy the folder into a project or your user skills directory:
-
-```bash
-cp -r skills/trek-plugin-dev /path/to/project/.claude/skills/   # project
-cp -r skills/trek-plugin-dev ~/.claude/skills/                  # user (local only)
-```
 
 However you install it, the skill triggers automatically when a task involves
 TREK plugins, `trek-plugin-sdk`, `trek-plugin.json`, or the TREK-Plugins
@@ -160,17 +164,51 @@ the registry's security notes.
 ## Feedback & corrections
 
 This skill is documentation verified against TREK's source — but TREK evolves.
-When an agent using the skill hits a claim that contradicts the real TREK source
-or a running instance (or a gap that cost time), it will hand you a **ready-made
-feedback block, already filled in**. Just
-[open an issue](https://github.com/fbnlrz/trek-plugin-skill/issues/new/choose),
-pick **📋 Paste an agent-generated report**, paste, and submit — that's the whole
-job. Manual **Skill discrepancy** and **Missing guidance** forms exist too.
+The skill has a built-in reporting loop so fixes reach everyone.
 
-One thing we ask you to keep honest: the block's **Evidence** line — read in the
-source, seen on a real instance, seen in `trek-plugin dev`, seen in a custom
-harness (no real CSP/sandbox), or merely inferred. An inference isn't a confirmed
-discrepancy; several reported "bugs" have turned out to be test-method artifacts.
+### How the report gets generated
+
+**Automatically:** the skill instructs the agent that whenever it hits a claim
+in the skill that contradicts the real TREK source or a running instance — or a
+gap that costs real time — it must fill in a standardized **Skill feedback**
+block and hand it to you in a fenced code block, every field already filled
+(file + section, what the skill says, what actually happens, evidence type,
+citation/repro, versions, suggested fix).
+
+**On demand:** you can also ask for one at any point in a session that uses the
+skill — for example:
+
+```
+Generate a skill feedback report for what we just found
+(the trek-plugin-dev skill's feedback block), filled in.
+```
+
+or, more targeted:
+
+```
+The skill says X in references/<file>.md, but we observed Y.
+Fill in the skill-feedback block for this — be honest in the Evidence field.
+```
+
+### Submitting it (three steps)
+
+1. Copy the block the agent printed.
+2. Open a [new issue](https://github.com/fbnlrz/trek-plugin-skill/issues/new/choose)
+   and pick **📋 Paste an agent-generated report**.
+3. Paste over the template body and submit — that's the whole job.
+
+(Manual **Skill discrepancy** and **Missing guidance** forms exist too, if you're
+reporting without an agent.)
+
+### The one honesty rule
+
+The block's **Evidence** line matters most: read in the source, seen on a real
+instance, seen in `trek-plugin dev`, seen in a custom harness (no real
+CSP/sandbox), or merely inferred. An inference isn't a confirmed discrepancy —
+several reported "bugs" have turned out to be test-method artifacts. Reports
+with an honest Evidence line get verified against the TREK source and merged
+fast (see PRs #4–#8 in this repo, several of which started as exactly such
+reports).
 
 ## License
 
