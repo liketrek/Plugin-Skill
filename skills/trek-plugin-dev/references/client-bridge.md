@@ -157,6 +157,13 @@ You then get the native TREK look for free:
   arrived; returns an unsubscribe fn), `context`, `invoke(sub, {method, body})`
   → Promise (rejects with an `Error` whose `.code` = the HTTP status), `notify`,
   `navigate`, `resize`, `ready`, `requestContext`.
+- **`window.trek.ui`** (≥3.2.1) — bundler-free DOM builders that emit the kit's
+  `trek-*` classes, so you can build themed UI with **no CSS and no build step**:
+  `ui.el(tag, props, children)` (the general builder — `props` take
+  `class`/`text`/`html`/`on:{event}`), `ui.button(label, {variant, onClick})`,
+  `ui.card(children)`, `ui.chip(text, variant)`, `ui.input({type, placeholder,
+  value})`, and `ui.mount(node, target?)`. Example:
+  `ui.mount(ui.card([ui.el('div',{class:'trek-title',text:'Nearby'}), ui.button('Refresh',{variant:'primary',onClick:refresh})]))`.
 - The kit **applies the live `tokens` + appearance for you**, **auto-reports
   height** (no manual `trek:resize`), and **bakes the glassy layer**
   (`--glass-*`, `--r-*`) that is deliberately *not* delivered in `tokens`.

@@ -106,9 +106,13 @@ See [references/testing.md](references/testing.md).
 | `integration` | No UI; background routes, plus **wired provider hooks (≥3.2.1)** (place-detail / trip-warning) | Feeding/syncing data; enriching core UI |
 
 Note: **`jobs[]` are declared but never scheduled** in 3.2.0/3.2.1 (no cron
-runner) — build periodic work as routes, not jobs. The `hooks` surface is mixed:
-`photoProvider`/`calendarSource` still **validate but aren't consumed**, but
-**(≥3.2.1) `placeDetailProvider` and `warningProvider` ARE wired** — an
+runner) — build periodic work as routes, not jobs. **To react to core activity,
+use `events` instead (≥3.2.1, WIRED):** declare `events: [{ on, handler }]` +
+`events:subscribe` and core fans out every trip event (`place:created`,
+`day:updated`, `file:created`, … or `*`) to you — handler gets only
+`{ event, tripId }`, runs with no user, fire-and-forget. The `hooks` surface is
+mixed: `photoProvider`/`calendarSource` still **validate but aren't consumed**,
+but **(≥3.2.1) `placeDetailProvider` and `warningProvider` ARE wired** — an
 `integration` can enrich a place's detail panel (`hook:place-detail-provider`) or
 raise planner warnings (`hook:trip-warning-provider`) with no UI of its own. See
 [references/server-api.md](references/server-api.md).
@@ -128,9 +132,9 @@ raise planner warnings (`hook:trip-warning-provider`) with no UI of its own. See
    `http:outbound:<host>` is **silently blocked at runtime**. Keep both lists
    identical. Bare `http:outbound` alone reaches nothing.
 4. **`ctx.trips`, `ctx.users`, `ctx.costs`, `ctx.ws.*` — and (≥3.2.1)
-   `ctx.places`/`ctx.days`/`ctx.itinerary`/`ctx.trips.update`/`ctx.meta` — work
+   `ctx.packing`/`ctx.files`/`ctx.places`/`ctx.days`/`ctx.itinerary`/`ctx.trips.update`/`ctx.meta` — work
    only inside route handlers** (they need the acting user the host binds from the
-   request; from `onLoad`/jobs → `RESOURCE_FORBIDDEN`). `asUserId` is ignored;
+   request; from `onLoad`/jobs/**events** → `RESOURCE_FORBIDDEN`). `asUserId` is ignored;
    `ctx.users` returns only self or a trip co-member; `ctx.ws.broadcastToUser`
    targets only the acting user — and **no broadcast reaches your own iframe**
    (poll via `trek:invoke`). **(≥3.2.1) several `ctx.*` paths now write core TREK

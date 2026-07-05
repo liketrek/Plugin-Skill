@@ -222,7 +222,9 @@ export interface MockHostOptions {
   /** Fixtures keyed by trip id; `members` gates access like the real host. */
   trips?: Record<number, { members: number[]; data?: unknown;
                            places?: unknown[]; reservations?: unknown[];
-                           costs?: unknown[]; canEditCosts?: boolean }>;  // (≥3.2.1)
+                           costs?: unknown[]; canEditCosts?: boolean;      // (≥3.2.1)
+                           days?: unknown[]; assignments?: unknown[];      // (≥3.2.1)
+                           packing?: unknown[]; files?: unknown[] }>;      // (≥3.2.1) ctx.packing/files.list
   users?: Record<number, unknown>;
   /** Canned db.query results, keyed by the EXACT sql string. */
   queryResults?: Record<string, unknown[]>;
