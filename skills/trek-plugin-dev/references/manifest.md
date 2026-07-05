@@ -38,7 +38,7 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `db:read:trips` | `ctx.trips.getById` / `getPlaces` / `getReservations` (read-only) | Membership-checked against the acting user; **route handlers only**. |
 | `db:read:users` | `ctx.users.getById` | **Route handlers only** (needs acting user). Returns only the **acting user or a trip co-member** (id, username, display_name, avatar) — not a free lookup of any account; others → `RESOURCE_FORBIDDEN`. |
 | `db:read:costs` **(≥3.2.1)** | `ctx.costs.getByTrip` / `listMine` (read-only budget items) | "Costs" = budget items. **Route handlers only** (acting user); `getByTrip` is membership-checked, `listMine` aggregates every accessible trip. Also requires the **Costs (budget) addon enabled**, else `RESOURCE_FORBIDDEN` ("the costs addon is disabled"). |
-| `db:write:costs` **(≥3.2.1)** | `ctx.costs.create` (create a budget item) | **Route handlers only.** Needs the Costs addon enabled **+** trip access **+** the acting user's **`budget_edit`** permission (else `RESOURCE_FORBIDDEN`). Input zod-validated (`name` required, else `BAD_PARAMS`); broadcasts `budget:created`. |
+| `db:write:costs` **(≥3.2.1)** | `ctx.costs.create` / `update` / `delete` (budget items) | **Route handlers only.** Needs the Costs addon enabled **+** trip access **+** the acting user's **`budget_edit`** (else `RESOURCE_FORBIDDEN`). Input zod-validated (→ `BAD_PARAMS`); broadcasts `budget:created/updated/deleted`. |
 | `db:write:places` **(≥3.2.1)** | `ctx.places.create` / `update` / `delete` | **Route handlers only.** Trip access **+** the acting user's **`place_edit`**. Input zod-validated (`name` required → `BAD_PARAMS`); broadcasts `place:created/updated/deleted`; audited. |
 | `db:write:days` **(≥3.2.1)** | `ctx.days.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`day_edit`**. Broadcasts `day:created/updated/deleted`. |
 | `db:write:itinerary` **(≥3.2.1)** | `ctx.itinerary.assign` / `unassign` (place↔day) | **Route handlers only.** Trip access **+** **`day_edit`**. The day and place must both belong to the trip (cross-trip link → `RESOURCE_FORBIDDEN`). Broadcasts `assignment:created/deleted`. |
@@ -46,8 +46,10 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `db:meta` **(≥3.2.1)** | `ctx.meta.get`/`set`/`list`/`delete` — the plugin's **own** namespaced key/value store on a `trip`/`place`/`day` | **Route handlers only.** Reads need trip access; writes need the entity's edit permission. Per-plugin namespace (you see only your own rows). Quotas: key ≤ 256 chars, value ≤ 64 KB JSON, ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. |
 | `ws:broadcast:trip` | `ctx.ws.broadcastToTrip` | **Route handlers only**; acting user must be a trip member. Event `plugin:<id>:<event>` to the **core app's** trip clients — **not** your own iframe. |
 | `ws:broadcast:user` | `ctx.ws.broadcastToUser` | **Route handlers only**; target must equal the acting user (own connections only). Event `{ type: 'plugin:<id>', event }`. There is **no** `ws:broadcast:*`. |
-| `hook:photo-provider` | Reserved: register a `PhotoProvider` | Validates, but the host does **not** consume hooks yet. |
-| `hook:calendar-source` | Reserved: register a `CalendarSource` | Same. |
+| `hook:photo-provider` | Register a `PhotoProvider` | **Still reserved** — validates but the host does **not** consume it. |
+| `hook:calendar-source` | Register a `CalendarSource` | Same — reserved / not consumed. |
+| `hook:place-detail-provider` **(≥3.2.1)** | `hooks.placeDetailProvider.getDetails(placeId, ctx)` → `{ label, value?, url? }[]` | **Wired.** Core calls every active implementer to enrich a place's detail panel (additive, fail-safe). Server-side, no UI of its own. |
+| `hook:trip-warning-provider` **(≥3.2.1)** | `hooks.warningProvider.getWarnings(tripId, ctx)` → `{ level, message, dayId?, placeId? }[]` | **Wired.** TREK surfaces the returned warnings in the trip planner (`level` = `info`/`warning`/`error`). |
 | `http:outbound` | Marker: plugin does outbound HTTP | Satisfies the "egress required" rule but grants **no host** by itself. |
 | `http:outbound:<host>` | Opens `<host>` in the runtime egress guard **and** the iframe CSP `connect-src` | This is what actually allows a request. |
 
