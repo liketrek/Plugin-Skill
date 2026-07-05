@@ -1,8 +1,9 @@
 # `trek-plugin` CLI reference
 
-Ships in the npm package **`trek-plugin-sdk`** (Node >= 18). Three equivalent
-bins: `trek-plugin-sdk`, `trek-plugin`, plus `create-trek-plugin` (the
-scaffolder). Invoke without installing:
+Ships in the npm package **`trek-plugin-sdk`** (Node >= 18). Two equivalent
+bins, `trek-plugin-sdk` and `trek-plugin`, plus a scaffold-only bin
+`create-trek-plugin` (`create-trek-plugin <name> [--type …]` — requires a
+name, runs no other commands). Invoke without installing:
 
 ```bash
 npx trek-plugin-sdk <command> [args]
@@ -10,9 +11,9 @@ npx trek-plugin-sdk <command> [args]
 
 | Command | Needs | What it does |
 |---|---|---|
-| `create [name]` | — | Scaffold a plugin. No name → interactive wizard (id, type, author, permissions). With a name: `--type integration\|page\|widget` (plus author/permission flags). |
+| `create [name] [--type t] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → interactive wizard (id, type, author, permissions). With a name: `--type integration\|page\|widget`. |
 | `dev [dir]` | — | Local dev server at `http://localhost:4317` with hot reload, SDK injection, permission-enforcing `ctx`. See [testing.md](testing.md). |
-| `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json` or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, or scaffold placeholders remain. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
+| `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json`, missing `README.md`, or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, or scaffold placeholders remain. Since `pack` validates first, a missing README also fails `pack`. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
 | `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. |
 | `entry --repo <owner/name> --tag <vX.Y.Z> [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>]` | git | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, and `minTrekVersion` (lower bound of the manifest's `trek` range). `--merge` prepends the new version onto an existing entry (update case, newest-first). |
 | `release [dir] --repo <o/n> --tag <vX.Y.Z> [--out] [--notes] [--commit] [--merge] [--sign]` | git + `gh` (authed) | One shot: `pack` → `gh release create` (uploads the zip) → prints the entry. |

@@ -81,7 +81,6 @@ one entry file, never `dist/`**.
 |---|---|---|
 | JSON schema | Entry violates `plugin-entry.schema.json` (incl. unknown keys) | Regenerate with `trek-plugin entry` |
 | id ↔ filename | `id` ≠ filename or not a valid slug | Rename file / fix id |
-| Reserved id | `registry`, `install`, `rescan` | Pick another id |
 | Owner binding | Existing id repointed to a different owner (per `OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge) | Only the bound owner can update; owner change needs a maintainer override |
 | Homoglyph / mixed-script | `name` uses confusable/mixed-script characters | Use plain characters |
 | Release tag | `gitTag` doesn't exist or doesn't resolve to `commitSha` | Push the tag; re-run `entry` |
@@ -90,6 +89,11 @@ one entry file, never `dist/`**.
 | Native binary scan | `.node` binaries (or similar) inside the zip | Remove native deps; repack |
 | Egress | Any `http:outbound*` permission but `egress[]` missing/empty, or `egress` contains a bare `*` | Declare explicit hosts |
 | Signature | `signature` present but doesn't verify against `authorPublicKey` | Re-sign the exact artifact bytes |
+
+(The reserved ids `registry`, `install`, `rescan` are refused by **TREK's
+install loader** — they collide with admin API route segments — not by the
+registry CI script. Avoid them regardless: a listed plugin nobody can install
+is pointless.)
 
 ### README gates (`check-readme.mjs`, fetched from your repo at the pinned commit)
 

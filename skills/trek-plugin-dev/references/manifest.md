@@ -22,7 +22,7 @@ registry CI, and the TREK install loader all apply the **same** rules
 | `nativeModules` | boolean | no | Must be `false` or absent; `true` is rejected everywhere ("native modules are not allowed (v1)"). |
 | `permissions` | string[] | no | Only known permissions (below); an unknown string fails validation. |
 | `egress` | string[] | conditional | Required non-empty when any `http:outbound` permission is present. No bare `"*"`. Hosts must match the host grammar (below). |
-| `capabilities.widget` | object | widget | `{ "title": string, "slot": "sidebar" \| "hero", "defaultSize": … }`. `slot` defaults to `sidebar`; any other value than `sidebar`/`hero` is rejected. |
+| `capabilities.widget` | object | no | `{ "title": string, "slot": "sidebar" \| "hero", "defaultSize": … }`. Optional even for widget plugins as far as validation goes; when present, `slot` must be `sidebar` (default) or `hero` — any other value is rejected. |
 | `settings` | array | no | Settings fields (below). TREK renders the form — plugins write no settings UI. |
 
 **Declarative-only keys the scaffold writes but the installed-manifest parser
@@ -49,7 +49,8 @@ object) and `capabilities.nav` (page nav is built from top-level `name` +
 Both network guards (runtime egress guard in the child process, CSP
 `connect-src` in the iframe) are built **from the `http:outbound:<host>`
 permissions — not from `egress[]`**. The validator only checks `egress[]` for
-presence, non-emptiness, and no bare `*`; it never cross-checks the two lists.
+presence, non-emptiness, no bare `*`, and per-host grammar; it never
+cross-checks the two lists.
 
 Consequence: a host in `egress[]` without a matching `http:outbound:<host>`
 permission passes validation and install, then every request to it is refused

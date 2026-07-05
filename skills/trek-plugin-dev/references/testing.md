@@ -6,9 +6,10 @@
 npx trek-plugin-sdk dev            # serves http://localhost:4317
 ```
 
-Works straight after `create`, **no `npm install` needed**: the CLI injects
-`require('trek-plugin-sdk')` into the child exactly like TREK does in
-production. It loads `server/index.js` through the same `definePlugin`
+Works straight after `create`, **no `npm install` needed**: the CLI serves
+`require('trek-plugin-sdk')` from itself, in-process — the same minimal frozen
+shim (`definePlugin` + `PLUGIN_API_VERSION`) that TREK injects into the plugin
+child in production. It loads `server/index.js` through the same `definePlugin`
 contract and provides:
 
 - a dashboard listing your routes,
@@ -26,11 +27,13 @@ Fidelity details:
   Node runtime has `node:sqlite`.
 - Simulate an unauthenticated request with `?_anon=1` — an `auth: true` route
   then returns 401, mirroring the host.
-- Feed `ctx.trips` / `ctx.users` with fixtures: drop a `dev-fixtures.json`
-  next to the manifest:
+- Feed `ctx.trips` / `ctx.users` — and `ctx.config` — with fixtures: drop a
+  `dev-fixtures.json` next to the manifest. It accepts three keys: `trips`,
+  `users`, and `config` (becomes the frozen `ctx.config` in dev):
 
 ```json
 {
+  "config": { "api_key": "test-key" },
   "trips": {
     "1": { "members": [1], "data": { "id": 1, "title": "Japan",
            "start_date": "2026-08-01", "end_date": "2026-08-14" } }
@@ -59,7 +62,9 @@ export interface MockHostOptions {
 
 export interface MockHost {
   ctx: PluginContext;
-  calls: { method: string; args: unknown[] }[];        // every ctx call, for assertions
+  calls: { method: string; args: unknown[] }[];        // names of permission-checked calls
+                                                       // (db/trips/users/ws — not log);
+                                                       // args is always [] — assert on method names only
   logs: { level: string; msg: string }[];
   broadcasts: { kind: 'trip' | 'user'; target: number;
                 event: string; data: unknown }[];
