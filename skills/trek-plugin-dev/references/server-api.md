@@ -63,7 +63,12 @@ export interface PluginDefinition {
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
   jobs?: PluginJob[];               // declared but not scheduled (see above)
-  hooks?: { photoProvider?: PhotoProvider; calendarSource?: CalendarSource }; // reserved — host does not call these
+  hooks?: {                                    // ≥3.2.1: placeDetail + warning are WIRED
+    photoProvider?: PhotoProvider;             // reserved — not consumed
+    calendarSource?: CalendarSource;           // reserved — not consumed
+    placeDetailProvider?: PlaceDetailProvider; // (≥3.2.1) getDetails(placeId, ctx) → {label,value?,url?}[]
+    warningProvider?: WarningProvider;         // (≥3.2.1) getWarnings(tripId, ctx) → {level,message,dayId?,placeId?}[]
+  };
 }
 
 export interface PluginRoute {
@@ -96,6 +101,8 @@ export interface PluginContext {
     getByTrip(tripId: number): Promise<unknown[]>;
     listMine(): Promise<unknown[]>;
     create(tripId: number, input: Record<string, unknown>): Promise<unknown>;
+    update(tripId: number, itemId: number, input: Record<string, unknown>): Promise<unknown>;
+    delete(tripId: number, itemId: number): Promise<{ deleted: boolean }>;
   };
   // (≥3.2.1) permission-gated trip-planner writes
   places: { create(tripId, input); update(tripId, placeId, input); delete(tripId, placeId): Promise<{ deleted: boolean }> };
@@ -124,7 +131,7 @@ export interface PluginContext {
 | `ctx.trips` | Read-only; **route handlers only**. The host binds the acting user from the request and membership-checks every read. `asUserId` is **ignored** (can't impersonate). From `onLoad`/`jobs` (no user) → `RESOURCE_FORBIDDEN`. | `db:read:trips` |
 | `ctx.users.getById` | **Route handlers only** (needs acting user). Returns **only the acting user themselves or a user who co-members a trip with them** (`id, username, display_name, avatar`) — **not** a free lookup of any account by id; others → `RESOURCE_FORBIDDEN`. | `db:read:users` |
 | `ctx.costs.getByTrip` / `listMine` **(≥3.2.1)** | "Costs" = budget items. **Route handlers only** (host-bound acting user; `onLoad`/jobs → `RESOURCE_FORBIDDEN`). `getByTrip` membership-checks the trip; `listMine` returns items across every trip the user can access. Requires the **Costs addon enabled** (else `RESOURCE_FORBIDDEN`: "the costs addon is disabled"). | `db:read:costs` |
-| `ctx.costs.create(tripId, input)` **(≥3.2.1)** | **Route handlers only.** Creates a budget item (frozen FX + members/payers) and **broadcasts `budget:created`** to the core app. Requires addon enabled **+** trip access **+** the acting user's **`budget_edit`** permission; input is zod-validated (`name` required, else `BAD_PARAMS`). | `db:write:costs` |
+| `ctx.costs.create` / `update(tripId, itemId, input)` / `delete(tripId, itemId)` **(≥3.2.1)** | **Route handlers only.** Create/edit/remove budget items (frozen FX + members/payers); **broadcasts `budget:created/updated/deleted`**. Requires the Costs addon **+** trip access **+** the acting user's **`budget_edit`**; input zod-validated (→ `BAD_PARAMS`). | `db:write:costs` |
 | `ctx.trips.update(tripId, input)` **(≥3.2.1)** | **Route handlers only.** Edit trip fields (`title`/`start_date`/`end_date`/`currency`/`reminder_days`/…). Trip access **+** the acting user's **`trip_edit`**; setting `is_archived` also needs **`trip_archive`**, `cover_image` needs **`trip_cover_upload`**. zod-validated (→ `BAD_PARAMS`); broadcasts `trip:updated`. | `db:write:trips` |
 | `ctx.places.*` / `ctx.days.*` / `ctx.itinerary.*` **(≥3.2.1)** | **Route handlers only.** Create/update/delete planner places & days; assign/unassign places to days. Trip access **+** the matching edit permission (`place_edit` / `day_edit` / `day_edit`); the day & place must belong to the trip. zod-validated (→ `BAD_PARAMS`); each broadcasts the app's real event (`place:*` / `day:*` / `assignment:*`) and is audited. | `db:write:places` / `db:write:days` / `db:write:itinerary` |
 | `ctx.meta.*` **(≥3.2.1)** | **Route handlers only.** The plugin's **own** namespaced KV store on a `trip`/`place`/`day` (`get`/`set`/`list`/`delete`). Reads need trip access; writes need the entity's edit permission. Per-plugin namespace; quotas key ≤ 256 chars / value ≤ 64 KB JSON / ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. | `db:meta` |
@@ -141,6 +148,25 @@ export interface PluginContext {
 > `trek:error`). For your widget/page to reflect live state, **poll your own
 > route via `trek:invoke`**. `ws:broadcast:*` is only useful to drive parts of
 > TREK that explicitly consume the event.
+
+## Provider hooks (≥3.2.1)
+
+Besides `routes`, a plugin (typically an `integration`) can contribute to core
+TREK via **wired** `hooks` on the definition — each gated by a `hook:*`
+permission and called with the plugin `ctx`:
+
+- **`placeDetailProvider`** (`hook:place-detail-provider`) —
+  `getDetails(placeId, ctx): Promise<{ label: string; value?: string; url?: string }[]>`.
+  Core calls **every active implementer** and shows the items in a place's detail
+  panel. Additive & **fail-safe** — a throw/timeout is skipped, never fatal.
+- **`warningProvider`** (`hook:trip-warning-provider`) —
+  `getWarnings(tripId, ctx): Promise<{ level: 'info'|'warning'|'error'; message: string; dayId?: number; placeId?: number }[]>`.
+  TREK surfaces the returned warnings in the trip planner.
+
+`photoProvider` / `calendarSource` still validate but are **not** consumed. Hooks
+feed **core UI** without your own iframe; the `place-detail` **widget slot** is
+the other route (your own sandboxed panel — see
+[client-bridge.md](client-bridge.md)).
 
 ## Error codes
 

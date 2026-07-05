@@ -103,13 +103,14 @@ See [references/testing.md](references/testing.md).
 | `widget` | Dashboard card (`sidebar` slot — ~180px on 3.2.0, glassy auto-height on ≥3.2.1) or a **non-interactive** boarding-pass hero strip (`hero` slot, ~110px, desktop-only). **(≥3.2.1)** also the `place-detail` slot → a panel in the trip planner's place inspector (gets `placeId`) | At-a-glance info (flight status, weather, mascot); a per-place add-on |
 | `page` | Own entry in the top navigation → full-page iframe (you own the layout) | A self-contained tool |
 | `trip-page` **(≥3.2.1)** | A tab **inside every trip planner**, scoped to the open trip (`tripId` always set); full-frame like `page`, no dashboard nav | A per-trip tool |
-| `integration` | No UI; background routes only | Feeding/syncing data via routes |
+| `integration` | No UI; background routes, plus **wired provider hooks (≥3.2.1)** (place-detail / trip-warning) | Feeding/syncing data; enriching core UI |
 
-Note: the SDK's `hooks` surface (`photoProvider`, `calendarSource`) validates
-but is **not consumed by the host**, and **`jobs[]` are declared but never
-scheduled** in TREK 3.2.0/3.2.1 (there is no cron runner) — the runtime
-effectively only invokes `onLoad`, `onUnload`, and `routes`. Build integrations
-with **routes** (polled by your client or an external trigger), not jobs. See
+Note: **`jobs[]` are declared but never scheduled** in 3.2.0/3.2.1 (no cron
+runner) — build periodic work as routes, not jobs. The `hooks` surface is mixed:
+`photoProvider`/`calendarSource` still **validate but aren't consumed**, but
+**(≥3.2.1) `placeDetailProvider` and `warningProvider` ARE wired** — an
+`integration` can enrich a place's detail panel (`hook:place-detail-provider`) or
+raise planner warnings (`hook:trip-warning-provider`) with no UI of its own. See
 [references/server-api.md](references/server-api.md).
 
 ## Critical rules (violating any of these breaks install or CI)
