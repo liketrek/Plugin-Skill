@@ -7,103 +7,118 @@
      (`trek-plugin dev` serves the whole client/ tree, so it appears at
       http://localhost:4317/ui/harness.html — same-origin with /api, no CORS.)
   2. Run `npx trek-plugin-sdk dev .`
-  3. Edit the CONFIG block below: plugin name, tagline, feature pills, and the
-     per-frame theme + mocked state your widget's route(s) return.
+  3. Edit the CONFIG block below: accent + accent2 (the plugin's brand hues — the
+     background derives from these), an optional kicker, name, tagline, pills, and
+     the per-frame theme + mocked state your widget's route(s) return.
   4. Open http://localhost:4317/ui/harness.html and screenshot at 1600x900
-     (e.g. Playwright: viewport 1600x900, deviceScaleFactor 1,
+     (Playwright: viewport 1600x900, deviceScaleFactor 1,
       page.screenshot({ path: 'docs/screenshot.png' })).
   5. !!! DELETE client/harness.html before `pack` !!! — `pack` zips the entire
      client/ tree, so a stray harness ships inside plugin.zip.
 
+  TWO LOOKS (CONFIG.background):
+    'glow' — dark, atmospheric: an accent glow behind a single centred hero card,
+             a kicker in the accent, and a subtle wave pattern. The default.
+    'mesh' — light: a colourful corner mesh in the plugin's accent hues.
+  ONE frame → a single hero card. TWO frames → light + dark side by side (shows
+  theme support). Make the background COLOUR FIT THE PLUGIN — match accent/accent2
+  to what the widget itself shows (e.g. a Japanese plugin → warm coral).
+
   This page is NOT under the plugin CSP (it's the host, not the frame), so it may
-  use gradients/layout freely. It draws TREK-style card chrome around each widget
-  frame for presentation — your real widget still renders chrome-free inside
-  TREK's own card (see client-bridge.md §5).
+  use gradients/patterns freely. It draws card chrome for presentation; your real
+  widget still renders chrome-free inside TREK's own card (see client-bridge.md).
 -->
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <title>Store shot</title>
 <style>
-  /* ── Palette: set --accent (+ --accent-2) to your plugin's brand (via CONFIG) ── */
   :root {
-    --accent: #4f46e5;                 /* plugin brand — drives the background mesh + pills */
-    --accent-2: #22d3ee;               /* a second, harmonising hue for the mesh */
+    --accent: #6366f1;          /* plugin brand — MATCH what the widget shows */
+    --accent-2: #22d3ee;        /* second hue (only used by the 'mesh' background) */
     --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    --fg: #f4f4f5; --fg-muted: #a1a1aa;   /* text; overridden by the light 'mesh' bg */
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; }
-  /* The screenshot frame. Keep everything important inside .safe (centre ~1040px)
-     so the 16:10 Discover-card crop never clips it. */
   body {
-    width: 1600px; height: 900px; overflow: hidden;
+    width: 1600px; height: 900px; overflow: hidden; position: relative;
     font-family: var(--font);
     display: flex; align-items: center; justify-content: center;
-    background-color: #eef1f8;
-    /* A colourful mesh built from the plugin's OWN accent hues — not a flat pastel. */
+  }
+
+  /* ── Backgrounds ── */
+  body.bg-glow {                /* dark, atmospheric — accent glow behind the hero */
+    background-color: #0a0a0d;
     background-image:
-      radial-gradient(760px 520px at 6% -14%,  color-mix(in srgb, var(--accent) 62%, transparent), transparent 60%),
-      radial-gradient(720px 560px at 100% 2%,  color-mix(in srgb, var(--accent-2) 58%, transparent), transparent 62%),
-      radial-gradient(900px 760px at 64% 122%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 60%),
+      radial-gradient(1000px 560px at 50% 30%,  color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
+      radial-gradient(1400px 900px at 50% 128%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%);
+  }
+  body.bg-mesh {                /* light, colourful corner mesh */
+    --fg: #111827; --fg-muted: #6b7280;
+    background-color: #eef1f8;
+    background-image:
+      radial-gradient(760px 520px at 6% -14%,  color-mix(in srgb, var(--accent) 60%, transparent), transparent 60%),
+      radial-gradient(720px 560px at 100% 2%,  color-mix(in srgb, var(--accent-2) 55%, transparent), transparent 62%),
+      radial-gradient(900px 760px at 64% 122%, color-mix(in srgb, var(--accent) 32%, transparent), transparent 60%),
       linear-gradient(150deg, #f5f7fd, #e8ecf7);
   }
-  /* Optional subtle texture (CONFIG.pattern). Above the mesh, below the content. */
-  body.pattern-dots::before, body.pattern-grid::before {
-    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+
+  /* ── Patterns (a .pat layer above the bg, below the content) ── */
+  .pat { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
+  .pat.waves {                  /* topographic arcs rising from below centre */
+    background-image: repeating-radial-gradient(circle at 50% 150%,
+      transparent 0 46px, color-mix(in srgb, var(--fg) 7%, transparent) 46px 48px);
+    -webkit-mask-image: linear-gradient(transparent 45%, #000);
+            mask-image: linear-gradient(transparent 45%, #000);
   }
-  body.pattern-dots::before {
-    background-image: radial-gradient(rgba(255,255,255,.55) 1.3px, transparent 1.4px);
-    background-size: 24px 24px; opacity: .5;
-    -webkit-mask-image: linear-gradient(#000, transparent 78%);
-            mask-image: linear-gradient(#000, transparent 78%);
+  .pat.dots {
+    background-image: radial-gradient(color-mix(in srgb, var(--fg) 22%, transparent) 1.3px, transparent 1.4px);
+    background-size: 24px 24px;
+    -webkit-mask-image: radial-gradient(1200px 820px at 50% 42%, transparent 28%, #000);
+            mask-image: radial-gradient(1200px 820px at 50% 42%, transparent 28%, #000);
   }
-  body.pattern-grid::before {
+  .pat.grid {
     background-image:
-      linear-gradient(color-mix(in srgb, var(--accent) 32%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 32%, transparent) 1px, transparent 1px);
-    background-size: 44px 44px; opacity: .2;
-    -webkit-mask-image: radial-gradient(1200px 700px at 50% 40%, #000, transparent 75%);
-            mask-image: radial-gradient(1200px 700px at 50% 40%, #000, transparent 75%);
+      linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px),
+      linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px);
+    background-size: 46px 46px; opacity: .5;
+    -webkit-mask-image: radial-gradient(1200px 760px at 50% 42%, #000, transparent 78%);
+            mask-image: radial-gradient(1200px 760px at 50% 42%, #000, transparent 78%);
   }
+
+  /* ── Content ── */
   .safe { position: relative; z-index: 1; width: 1040px; text-align: center; }
+  .kicker { font-size: 20px; font-weight: 600; letter-spacing: .04em; color: var(--accent); margin-bottom: 4px; }
+  .title { font-size: 52px; font-weight: 800; color: var(--fg); letter-spacing: -0.02em; line-height: 1.06; }
+  .tagline { margin-top: 12px; font-size: 18px; font-weight: 500; color: var(--fg-muted); }
+  .cards { margin-top: 40px; display: flex; gap: 28px; justify-content: center; }
+  .col { display: flex; flex-direction: column; }
 
-  .title { font-size: 34px; font-weight: 700; color: #111827; letter-spacing: -0.02em; }
-  .tagline { margin-top: 10px; font-size: 16px; font-weight: 500; color: #6b7280; }
-
-  .cards { margin-top: 40px; display: flex; gap: 32px; justify-content: center; }
-
-  /* Glassy tool card — mirrors the ≥3.2.1 PluginWidgets.tsx look (glass + --r-xl,
-     uppercase title, no header border). */
-  .card { width: 460px; border-radius: 20px; overflow: hidden; border: 1px solid;
-          backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-  .card .head {
-    padding: 16px 20px 8px; font-size: 12px; font-weight: 600; text-align: left;
-    text-transform: uppercase; letter-spacing: 0.14em;
-  }
-  .card iframe { display: block; width: 100%; height: 180px; border: 0; background: transparent; }
-  .card .badge { padding: 6px 0 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
-                 text-transform: uppercase; color: #9ca3af; text-align: center; }
-
-  /* Light glass */
-  .card.light { background: rgba(255,255,255,0.72); border-color: rgba(255,255,255,0.6);
-                box-shadow: 0 8px 30px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.6); }
+  /* Glassy tool card — mirrors the ≥3.2.1 PluginWidgets.tsx look. */
+  .card { width: 440px; border-radius: 20px; overflow: hidden; border: 1px solid;
+          backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .card .head { padding: 16px 20px 8px; font-size: 12px; font-weight: 600; text-align: left;
+                text-transform: uppercase; letter-spacing: 0.14em; }
+  .card iframe { display: block; width: 100%; height: 200px; border: 0; background: transparent; }
+  .badge { padding: 8px 0 0; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--fg-muted); text-align: center; }
+  .card.light { background: rgba(255,255,255,.75); border-color: rgba(255,255,255,.6);
+                box-shadow: 0 12px 40px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.6); }
   .card.light .head { color: #6b7280; }
-
-  /* Dark glass */
-  .card.dark { background: rgba(24,24,27,0.55); border-color: rgba(255,255,255,0.08);
-               box-shadow: 0 8px 30px rgba(0,0,0,.40), inset 0 1px 0 rgba(255,255,255,.06); }
+  .card.dark { background: rgba(20,20,23,.62); border-color: rgba(255,255,255,.09);
+               box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06); }
   .card.dark .head { color: #a1a1aa; }
 
-  .pills { margin-top: 34px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .pill {
-    padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
-    color: #374151; background: rgba(0,0,0,0.04);
-    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-  }
+  .pills { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .pill { padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+          color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent);
+          border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
 </style>
 </head>
 <body>
   <div class="safe">
+    <div class="kicker" id="kicker"></div>
     <div class="title" id="title"></div>
     <div class="tagline" id="tagline"></div>
     <div class="cards" id="cards"></div>
@@ -112,57 +127,54 @@
 
 <script>
   // ─────────────────────────────────────────────────────────────────────────
-  // CONFIG — edit this. `state` is what your route(s) return via trek:invoke;
-  // give the two frames different states to show the widget actually doing
-  // something (e.g. plenty-of-time vs. departing-soon), one light + one dark.
+  // CONFIG — edit this. `state` is what your route(s) return via trek:invoke.
   // ─────────────────────────────────────────────────────────────────────────
   const CONFIG = {
-    uiUrl: '/ui',                       // the widget's own client bundle
+    uiUrl: '/ui',                   // the widget's own client bundle
+    background: 'glow',             // 'glow' (dark, atmospheric) | 'mesh' (light, colourful)
+    accent:  '#6366f1',             // plugin brand — MATCH the widget (e.g. warm coral for a JP plugin)
+    accent2: '#22d3ee',             // second mesh hue (only used by 'mesh')
+    pattern: 'waves',               // 'waves' | 'dots' | 'grid' | 'none'
+    kicker:  '',                    // optional line above the title (e.g. a native-script name), in accent
     name: 'Your Plugin',
     tagline: 'One line on what it does and why it belongs on the dashboard.',
     pills: ['Membership-checked', 'Light & dark', 'No network', 'Zero setup'],
-    // Make the background FIT THE PLUGIN: set accent (+ accent2) to its brand
-    // hues — the mesh + pills derive from these. Pick colours that match what the
-    // widget itself shows (e.g. a weather plugin → sky blue + sunset orange).
-    accent: '#4f46e5',
-    accent2: '#22d3ee',
-    pattern: 'dots',                    // 'dots' | 'grid' | 'none' — subtle texture
-    frameHeight: 180,                   // 180 = TREK sidebar slot; raise for taller widgets
+    frameHeight: 200,               // sidebar ~180–200; raise for taller widgets
     locale: 'en',
+    // TWO frames = light + dark side by side (shows theme support) — the default.
+    // Drop to ONE for a single hero card. Give each frame a different `state` to
+    // show the widget doing something (e.g. healthy vs. alert).
     frames: [
-      { theme: 'light', label: 'Light', tripId: 1, state: { /* your GET /… payload */ } },
-      { theme: 'dark',  label: 'Dark',  tripId: 1, state: { /* a different state */ } },
+      { theme: 'light', tripId: 1, state: { /* your GET /… payload */ } },
+      { theme: 'dark',  tripId: 1, state: { /* a different state */ } },
     ],
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Apply the plugin's palette + texture to the background.
-  if (CONFIG.accent)  document.documentElement.style.setProperty('--accent', CONFIG.accent)
-  if (CONFIG.accent2) document.documentElement.style.setProperty('--accent-2', CONFIG.accent2)
-  if (CONFIG.pattern && CONFIG.pattern !== 'none') document.body.classList.add('pattern-' + CONFIG.pattern)
-
-  document.getElementById('title').textContent = CONFIG.name
-  document.getElementById('tagline').textContent = CONFIG.tagline
-  document.getElementById('pills').innerHTML =
-    CONFIG.pills.map(p => `<span class="pill"></span>`).join('')
+  const root = document.documentElement, bodyEl = document.body
+  root.style.setProperty('--accent', CONFIG.accent)
+  root.style.setProperty('--accent-2', CONFIG.accent2)
+  bodyEl.classList.add(CONFIG.background === 'mesh' ? 'bg-mesh' : 'bg-glow')
+  if (CONFIG.pattern && CONFIG.pattern !== 'none') {
+    const pat = document.createElement('div'); pat.className = 'pat ' + CONFIG.pattern; bodyEl.prepend(pat)
+  }
+  const set = (id, v) => { const el = document.getElementById(id); if (v) el.textContent = v; else el.style.display = 'none' }
+  set('kicker', CONFIG.kicker); set('title', CONFIG.name); set('tagline', CONFIG.tagline)
+  document.getElementById('pills').innerHTML = (CONFIG.pills || []).map(() => '<span class="pill"></span>').join('')
   document.querySelectorAll('.pill').forEach((el, i) => { el.textContent = CONFIG.pills[i] })
 
-  // Build one column (card + theme label) per configured frame and register it.
-  const frames = []   // { iframe, cfg }
+  // Build one column (card + optional theme label) per configured frame.
+  const frames = []
   const cards = document.getElementById('cards')
+  const showLabels = CONFIG.frames.length > 1
   for (const cfg of CONFIG.frames) {
-    const col = document.createElement('div')
-    const card = document.createElement('div')
-    card.className = 'card ' + (cfg.theme === 'dark' ? 'dark' : 'light')
+    const col = document.createElement('div'); col.className = 'col'
+    const card = document.createElement('div'); card.className = 'card ' + (cfg.theme === 'light' ? 'light' : 'dark')
     const head = document.createElement('div'); head.className = 'head'; head.textContent = CONFIG.name
-    const iframe = document.createElement('iframe')
-    iframe.src = CONFIG.uiUrl
+    const iframe = document.createElement('iframe'); iframe.src = CONFIG.uiUrl
     iframe.style.height = CONFIG.frameHeight + 'px'
     card.appendChild(head); card.appendChild(iframe); col.appendChild(card)
-    if (cfg.label) {
-      const badge = document.createElement('div'); badge.className = 'badge'; badge.textContent = cfg.label
-      col.appendChild(badge)
-    }
+    if (showLabels) { const b = document.createElement('div'); b.className = 'badge'; b.textContent = cfg.theme; col.appendChild(b) }
     cards.appendChild(col)
     frames.push({ iframe, cfg })
   }
@@ -174,22 +186,15 @@
     const m = e.data; if (!m || typeof m !== 'object') return
     if (m.type === 'trek:ready' || m.type === 'trek:context:request') {
       e.source.postMessage({
-        type: 'trek:context',
-        tripId: f.cfg.tripId ?? null,
-        userId: '1',
-        theme: f.cfg.theme,
-        locale: CONFIG.locale,
-        hostOrigin: '*',
-        // ≥3.2.1 fields the design kit reads. Add `tokens: {…}` for an exact
-        // accent; omit it and the kit falls back to its baked default palette.
+        type: 'trek:context', tripId: f.cfg.tripId ?? null, userId: '1',
+        theme: f.cfg.theme, locale: CONFIG.locale, hostOrigin: '*',
+        // ≥3.2.1 fields the design kit reads. Add `tokens: {…}` for an exact accent.
         appearance: { scheme: 'default', density: 'comfortable', reducedMotion: false, noTransparency: false },
       }, '*')
     } else if (m.type === 'trek:invoke') {
-      // Reply to any of the widget's routes with this frame's mocked state.
-      // Branch on m.sub here if your widget calls several routes.
       e.source.postMessage({ type: 'trek:response', requestId: m.requestId, data: f.cfg.state }, '*')
     } else if (m.type === 'trek:resize') {
-      const h = Math.max(120, Math.min(Number(m.height) || CONFIG.frameHeight, 520))
+      const h = Math.max(120, Math.min(Number(m.height) || CONFIG.frameHeight, 560))
       f.iframe.style.height = h + 'px'
     }
   })

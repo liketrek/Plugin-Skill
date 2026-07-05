@@ -57,24 +57,39 @@ Update flow: bump `version` in the manifest, re-pack, new `vX.Y.Z` tag/release,
 then `entry --merge` onto the existing registry file (newest version first) and
 PR it — see [references/publishing.md](references/publishing.md).
 
-## Show the first UI draft for sign-off
+## Build the UI / store shot *with* the user, not for them
 
-For a `page`/`widget` plugin the UI is subjective — **don't guess whether it
-looks right, and don't just describe it in words.** As soon as the first draft
-renders, **capture a screenshot and show it to the user for approval** before
-polishing or publishing:
+For a `page`/`widget` plugin the look is subjective — **don't silently pick it,
+and don't just describe it in words.** Two rules:
 
-- Drive it headlessly — Chromium/Playwright is preinstalled in Claude Code
-  environments. Screenshot **both light and dark** so they can judge theme
-  support.
-- **≥ SDK 1.3.0:** open `dev`'s themed **`/preview`** and toggle light/dark/accent.
-- **Otherwise, or for a composed shot:** use the host harness or the ready-made
-  [`assets/store-shot.html`](assets/store-shot.html) (both themes side by side).
-- Present the image(s), ask *"does this look right?"*, and iterate on their
-  answer. Once approved, the same shot doubles as the store `docs/screenshot.png`.
+**1. Propose choices interactively, with suggestions.** Before and while building
+the UI and the store image, offer the user concrete options tailored to the
+plugin and let them choose (use an interactive prompt — e.g. Claude Code's
+question UI — not an assumption). Good dimensions to ask about, each with **2–4
+suggestions derived from what the plugin does**:
 
-Get the same visual sign-off on the store preview image before it ships. See
-[references/testing.md](references/testing.md).
+- **Accent colour(s)** — hues that match the subject (weather → sky blue +
+  sunset orange; a Japanese-phrase plugin → warm coral).
+- **Store-shot background** — dark & atmospheric (an accent *glow*) vs. light (a
+  colourful accent *mesh*).
+- **Pattern/texture** — waves / dots / grid / none (some texture so it isn't flat
+  and boring).
+- **Kicker, tagline, and which feature pills** to show.
+- **Layout** — light + dark side by side (shows theme support) vs. a single hero.
+
+**2. Show the draft as a screenshot for sign-off** — don't ship on a description:
+
+- Drive it headlessly (Chromium/Playwright is preinstalled). Screenshot **both
+  light and dark**.
+- **≥ SDK 1.3.0:** open `dev`'s themed **`/preview`** (light/dark/accent toggles).
+- **For the composed store image:** the ready-made
+  [`assets/store-shot.html`](assets/store-shot.html) renders both-theme cards +
+  title + feature pills on an accent-driven background (`glow`/`mesh` ·
+  `waves`/`dots`/`grid`) — set its CONFIG from the choices above.
+- Present the image(s), ask *"does this look right?"*, and iterate. The approved
+  shot doubles as the store `docs/screenshot.png`.
+
+See [references/testing.md](references/testing.md).
 
 ## Choosing the plugin type
 

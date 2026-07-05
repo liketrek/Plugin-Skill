@@ -143,13 +143,15 @@ Keep key content centred so the 16:10 discover-card crop never clips it (see
 **Composition template (1600×900)** — treat it as a marketing shot, not a raw
 frame grab:
 
-- a **full-bleed background with real colour that fits the plugin** — a mesh of
-  the plugin's **own accent hues** (a primary + a harmonising second hue) with an
-  optional subtle dot/grid texture. Concentrate the colour toward the corners so
-  the centre stays calm and the cards/title stay focal. **Avoid a flat pale
-  gradient — it looks lame.** (`store-shot.html` builds exactly this from the
-  `accent` / `accent2` / `pattern` you set in its CONFIG — match them to what the
-  widget itself shows, e.g. a weather plugin → sky blue + sunset orange.)
+- a **full-bleed background with real colour that fits the plugin** — either a
+  **dark, atmospheric accent *glow*** (like a premium hero shot) or a **light
+  colourful accent *mesh***, plus a subtle **pattern** (waves / dots / grid) so
+  it isn't flat and boring. Keep the colour toward the edges/behind the title so
+  the centre stays calm and the cards/title stay focal. **Never a flat pale
+  gradient.** (`store-shot.html` builds exactly this from its CONFIG —
+  `background: 'glow'|'mesh'`, `accent`/`accent2`, `pattern`, `kicker` — match
+  them to what the widget shows, e.g. a Japanese-phrase plugin → warm coral glow
+  + a native-script kicker.)
 - a centred **title band**: the plugin **name** + a one-line tagline (system
   font, `--text-primary` / `--text-muted`);
 - the widget in **both themes**, two "cards" side by side — here you *may* draw
