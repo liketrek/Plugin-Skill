@@ -42,6 +42,49 @@ Fidelity details:
 }
 ```
 
+## Previewing the UI with an emulated host
+
+The dev server exposes three URLs: `/` (a dashboard listing your routes), `/ui`
+(your **raw** `client/index.html`), and `/api/<path>` (your routes). Crucially,
+**nothing answers the postMessage bridge**: open `/ui` directly and no parent
+replies to `trek:ready` / `trek:invoke`, so a widget that fetches its state on
+boot stays stuck in its loading state and never receives `trek:context`
+(theme/locale). The dev server also sets **no CSP and no sandbox**, so `/ui`
+is *not* a faithful preview of the real frame (see the CSP caveat in
+[client-bridge.md](client-bridge.md)).
+
+To exercise the full UI loop — and to capture a real `docs/screenshot.png` —
+wrap the frame in a tiny host harness that speaks the bridge and proxies invokes
+to the dev API:
+
+```html
+<iframe id="f" src="http://localhost:4317/ui"></iframe>
+<script>
+  const f = document.getElementById('f')
+  addEventListener('message', async (e) => {
+    const m = e.data; if (!m) return
+    if (m.type === 'trek:ready' || m.type === 'trek:context:request') {
+      f.contentWindow.postMessage(
+        { type: 'trek:context', tripId: 1, userId: '1',
+          theme: 'dark', locale: 'en', hostOrigin: '*' }, '*')
+    } else if (m.type === 'trek:invoke') {
+      const r = await fetch('http://localhost:4317/api' + m.sub,
+        { method: m.method, headers: { 'content-type': 'application/json' },
+          body: m.body ? JSON.stringify(m.body) : undefined })
+      f.contentWindow.postMessage(
+        { type: 'trek:response', requestId: m.requestId, data: await r.json() }, '*')
+    } else if (m.type === 'trek:resize') {
+      f.style.height = m.height + 'px'
+    }
+  })
+</script>
+```
+
+Serve the harness from the same origin as the dev server (or enable CORS) so the
+`fetch` isn't blocked. This renders the widget with live data and is how you
+produce a faithful screenshot — but it does **not** apply the production CSP, so
+still validate image/font choices against the real frame.
+
 ## `createMockHost` — unit tests
 
 Import from **`trek-plugin-sdk/testing`**. The mock enforces the **same**

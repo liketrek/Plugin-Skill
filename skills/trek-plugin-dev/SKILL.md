@@ -112,6 +112,14 @@ but is **not yet consumed by the host** — the runtime only invokes `onLoad`,
 12. **Manifest `routes[]` and `capabilities.nav` are declarative only.** The
     host reads real routes/jobs off the loaded `definePlugin` object, and a
     page's nav entry comes from top-level `name` + `icon`.
+13. **The UI frame renders no bundled or external images/fonts.** It runs at an
+    opaque origin under a strict CSP (`img-src 'self' data: blob:`,
+    `font-src 'self' data:`) where `'self'` matches nothing — so relative file
+    paths (`./logo.png`) and external URLs don't load; only inline SVG,
+    `data:`/`blob:` images, and the system font stack work. Draw artwork as
+    inline SVG (like koffi). `trek-plugin dev` applies **no** CSP/sandbox, so an
+    image that works in `dev` can still fail in the real host — verify against
+    the real frame. See [references/client-bridge.md](references/client-bridge.md).
 
 ## Isolation model (what plugin code can rely on)
 
