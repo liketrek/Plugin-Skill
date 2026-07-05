@@ -59,7 +59,7 @@ Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
 | `repo` | `owner/name` (GitHub). Source of truth for the code. |
 | `homepage` | Optional URI. |
 | `tags` | Optional; up to 8 slugs matching `^[a-z0-9-]{2,24}$`. |
-| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — a `trip-page` entry only passes the manifest-parity gate against the v3-2-1 schema. |
+| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — `trip-page` is now in the registry `main` schema's `type` enum (v3-2-1 was merged), so entries validate directly. |
 | `authorPublicKey` | Optional base64 **raw Ed25519** public key (the 32-byte key; schema allows 40–120 chars). Stable across versions; TOFU-pinned on first install. |
 | `reviewedAt`, `boundOwner` | **CI-maintained — never set these yourself.** |
 | `versions` | Array, min 1, **newest first**. |
@@ -81,12 +81,25 @@ Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
 | `nativeModules` | Literally `false` (const). |
 | `signature` | Optional base64 **raw Ed25519** signature (the 64-byte sig) over the artifact bytes; requires `authorPublicKey` on the entry. |
 | `publishedAt` | Optional ISO date-time. |
+| `requiredAddons` **(registry ≥ PR #13)** | Optional array (≤ 16) of addon ids (`^[a-z][a-z0-9_]{1,39}$`, e.g. `["budget"]`) that must be enabled in TREK for this version to activate. **Must mirror the manifest** (parity gate). |
+| `pluginDependencies` **(registry ≥ PR #13)** | Optional array (≤ 32) of `{ id, version }` — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` a range string ≤ 100 chars). **Must mirror the manifest** (parity gate). |
 
 `trek-plugin entry --repo <o/n> --tag <vX.Y.Z>` computes all derived fields;
 `--merge existing.json` prepends a new version for updates. The canonical
 shape is `schema/example-entry.json`; the authority is
 `schema/plugin-entry.schema.json` (additionalProperties: false — no extra
 keys).
+
+> **Trap — `requiredAddons`/`pluginDependencies` are registry-ahead-of-SDK.** The
+> registry (TREK-Plugins `main`, PR #13) added these fields and a **parity gate**,
+> but the v3-2-1 SDK's `entry`/`buildEntry` does **not** copy them from the manifest
+> into the entry, and `validateManifest` silently ignores unknown manifest keys. So
+> if you declare `requiredAddons`/`pluginDependencies` in `trek-plugin.json`, you
+> must **hand-add the identical arrays to the entry** or the parity gate fails
+> (`manifest requiredAddons != entry requiredAddons`). If you use neither, both
+> default to `[]` and you're unaffected. TREK the app does **not** yet enforce these
+> at activation (no references in the 3.2.1 server) — they're declarative index
+> metadata so the registry can express addon + inter-plugin deps.
 
 ## CI gates
 
@@ -111,6 +124,7 @@ runs schema/format checks only.)
 | Homoglyph / mixed-script | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek U+0370–037F. Only fires on a *mix* — an all-Cyrillic name, or a Latin+common-Greek (Α/Ο/α…) spoof, is **not** caught | Use plain ASCII |
 | Release tag | `gitTag` doesn't exist or doesn't resolve to `commitSha` | Push the tag; re-run `entry` |
 | Manifest parity | `id`/`version`/`type`/`apiVersion`/`nativeModules` in the repo's `trek-plugin.json` **at `commitSha`** differ from the entry (or `nativeModules: true`) | Align manifest and entry; retag |
+| Dependency parity **(registry ≥ PR #13)** | The entry's `requiredAddons` or `pluginDependencies` (sorted/normalized) differ from the manifest's at `commitSha` — including the common case where you declared them in the manifest but the SDK's `entry` didn't copy them, so the entry has `[]` | Hand-add the identical `requiredAddons`/`pluginDependencies` arrays to the entry |
 | Artifact hash / over-size | Downloaded asset's SHA-256 ≠ `sha256`, or the bytes are **> ~4 KB larger** than declared `size` (`buf.length > size + 4096`) — no lower-bound check; the 1–50 MB range is a separate *schema* check on the declared `size` | Never touch released assets; cut a new version |
 | Native binary scan | `.node`, `binding.gyp`, or a `prebuild(s)/` path inside the artifact (**zip or tar.gz**) | Remove native deps; repack |
 | Egress | Any `http:outbound*` permission but `egress[]` missing/empty, or `egress` contains a bare `*` | Declare explicit hosts |
