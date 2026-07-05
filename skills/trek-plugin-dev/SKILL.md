@@ -218,12 +218,29 @@ raise planner warnings (`hook:trip-warning-provider`) with no UI of its own. See
   install** (no version negotiation). Artifact limits: 25 MB/file, 50 MB total,
   4000 zip entries.
 
-## Canonical example
+## Canonical examples
 
-`koffi` — the official mascot hero-widget — is the reference implementation:
-manifest, membership-checked trip read, iframe bridge, and a README that passes
-the CI gate. Source: `plugin-sdk/examples/koffi` in the TREK repo; registry
-entry: `registry/plugins/koffi.json` in TREK-Plugins.
+Two official examples in the TREK repo (`plugin-sdk/examples/`) — pick the one
+that matches your plugin's shape:
+
+- **`koffi`** — the mascot hero-**widget**: manifest, membership-checked trip
+  read, the iframe bridge, hand-built inline SVG UI, and a README that passes the
+  CI gate. The reference for anything with its own sandboxed UI. Registry entry:
+  `registry/plugins/koffi.json` in TREK-Plugins.
+- **`trip-doctor`** (≥3.2.1) — a **hooks-only, no-UI** `integration`: it feeds
+  TREK's own planner surfaces through `warningProvider.getWarnings` and
+  `placeDetailProvider.getDetails`, and pins private notes via `ctx.meta` behind a
+  `POST /pin` route. The reference for the ≥3.2.1 provider-hook + `db:meta`
+  pattern — TREK renders everything natively, so there's no CSP/iframe to fight.
+  (Its README's `npx @trek/plugin-sdk …` and "signed `.trekplugin` bundle" are
+  example prose, **not** the real CLI — the package is `trek-plugin-sdk` and
+  `pack` emits `plugin.zip`; signing is a separate `sign` step. Use the commands
+  in [cli.md](references/cli.md).)
+
+The **Plugin Cookbook** (`wiki/Plugin-Cookbook.md`, ≥3.2.1) collects copy-paste
+recipes for the above plus itinerary writes, meta tagging, `ws` broadcast, and
+the `trek:ui` design kit — a good first stop when you know the capability but not
+the exact call.
 
 ## Reporting errors in this skill
 

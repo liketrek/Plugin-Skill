@@ -51,7 +51,9 @@ never consumed.
 > `runtime/plugin-host-entry.ts`). A declared `schedule` is parsed and reported
 > but the handler **never fires**. Do **not** rely on `jobs` for periodic work:
 > drive it from a route your own client polls, or an external trigger hitting an
-> `auth:false` route.
+> `auth:false` route. (The Plugin Cookbook's "Where things run" table lists
+> `jobs` as running "on a schedule" — that row is aspirational; no scheduler
+> wiring exists in 3.2.0/3.2.1, verified above.)
 
 ## Type surface (from `trek-plugin-sdk`)
 
@@ -162,6 +164,12 @@ permission and called with the plugin `ctx`:
 - **`warningProvider`** (`hook:trip-warning-provider`) —
   `getWarnings(tripId, ctx): Promise<{ level: 'info'|'warning'|'error'; message: string; dayId?: number; placeId?: number }[]>`.
   TREK surfaces the returned warnings in the trip planner.
+
+The `hook:*` grant is **enforced at dispatch** (v3-2-1): core only wires a
+provider that is active, implements the hook in code, **and** holds the matching
+`hook:*` permission. Declaring `getDetails`/`getWarnings` without the grant means
+your hook is silently never called — so if a provider "never fires", check the
+manifest `permissions` first.
 
 `photoProvider` / `calendarSource` still validate but are **not** consumed. Hooks
 feed **core UI** without your own iframe; the `place-detail` **widget slot** is
