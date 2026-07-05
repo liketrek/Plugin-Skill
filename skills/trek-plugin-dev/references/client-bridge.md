@@ -169,12 +169,21 @@ and don't load Poppins.
 
 ### 2. Switch light/dark from context (with a pre-context default)
 
+Apply the theme to **`document.documentElement` (`:root`), not `<body>`, and set
+CSS `color-scheme` per theme**. The iframe's canvas backdrop follows the **root
+element's `color-scheme`** — if it stays at the default (light) while you render
+dark-theme content on a transparent body (as a flush sidebar widget must), the
+browser paints an **opaque white canvas** behind your widget and light text lands
+on white. TREK itself does the same (`.dark { color-scheme: dark }` in
+`index.css`). Observed in a Chromium harness; engine-level behavior, so expect it
+in the real frame too.
+
 ```css
-:root { --bg-card:#fff; --text-primary:#111827; /* …light… */ }
-body[data-theme="dark"] { --bg-card:#131316; --text-primary:#f4f4f5; /* …dark… */ }
+:root { color-scheme: light; --bg-card:#fff; --text-primary:#111827; /* …light… */ }
+:root[data-theme="dark"] { color-scheme: dark; --bg-card:#131316; --text-primary:#f4f4f5; /* …dark… */ }
 /* before trek:context arrives, follow the OS preference */
 @media (prefers-color-scheme: dark) {
-  body:not([data-theme]) { --bg-card:#131316; --text-primary:#f4f4f5; /* …dark… */ }
+  :root:not([data-theme]) { color-scheme: dark; --bg-card:#131316; --text-primary:#f4f4f5; /* …dark… */ }
 }
 ```
 ```js
@@ -186,8 +195,11 @@ function resolveTheme(m) {
     window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 // on every trek:context:
-document.body.dataset.theme = resolveTheme(m)
+document.documentElement.dataset.theme = resolveTheme(m)
 ```
+
+(For `hero` widgets the host forces `color-scheme: light` on the frame element
+anyway — another reason hero artwork should not depend on a dark canvas.)
 
 > **Theme across versions:** TREK **3.2.x sends** `theme` in `trek:context`
 > (derived from its `<html>.dark` class, `PluginFrame.tsx`). **≥ 3.2.1** also
@@ -213,8 +225,25 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
 
 - **No emoji in the UI** — TREK's own interface is emoji-free. Use inline SVG
   icons/marks and plain text so the plugin matches the host.
-- `--accent` / `--accent-text` for the primary button, `--text-muted` for small
-  uppercase kicker labels, `font-variant-numeric: tabular-nums` for counts.
+- `--text-muted` for small uppercase kicker labels,
+  `font-variant-numeric: tabular-nums` for counts.
+- **Buttons — TREK's exact spec** (from `index.css` + real components):
+  - Primary: `background:var(--accent); color:var(--accent-text);
+    border:none; border-radius:8px` (`--radius-sm`); `padding:6px 16px`;
+    `font-size:12px; font-weight:600`.
+  - Secondary: same geometry, `background:none;
+    border:1px solid var(--border-primary)` (padding `6px 14px`).
+  - **Press feedback (TREK's signature feel — don't invent your own):**
+    ```css
+    button:not(:disabled) {
+      transition-property: transform, color, background-color, border-color,
+                           box-shadow, opacity, filter;
+      transition-duration: 180ms;
+      transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+    }
+    button:not(:disabled):active { transform: scale(0.97); transition-duration: 80ms; }
+    ```
+    Scale-press, not `translateY`. Guard with `prefers-reduced-motion`.
 - Call `trek:resize` after every render/content change so the card fits exactly.
 - Respect `prefers-reduced-motion` for any animation (koffi does).
 
@@ -231,7 +260,9 @@ instance). Two consequences:
   mismatched top corners). Render **transparent and flush**; use the tokens for
   **text and controls**, keep the **container** bare. A full-bleed accent bar at
   the very top edge is fine — the card's `overflow-hidden` clips it to the
-  rounded corners.
+  rounded corners. **Because the widget is transparent, pin `color-scheme` on
+  `:root` per theme** (§2) — otherwise the frame paints an opaque light canvas
+  behind your dark-theme content.
 - **Build for ~180px — `trek:resize` will NOT grow a sidebar widget.** The slot
   height is hard-coded and `overflow-hidden`, so content past ~180px (a footer
   row, a reset button) is **permanently clipped**, in every version. The
