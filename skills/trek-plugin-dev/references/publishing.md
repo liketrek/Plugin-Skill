@@ -18,6 +18,12 @@ README.md             # must pass the quality gate (below)
 docs/screenshot.png   # store card image — committed, NOT shipped in the zip
 ```
 
+> Only those root files (`trek-plugin.json` / `README.md` / `package.json` /
+> `LICENSE`) **plus the full `server/` and `client/` trees** are packed. **Any
+> other top-level dir (e.g. `data/`) is silently excluded** and `validate` won't
+> warn — bundle runtime assets *inside* `server/` or `client/`, or they'll be
+> missing at runtime after install.
+
 Release rule: tag `vX.Y.Z` where `X.Y.Z` **equals** the manifest `version`,
 with the packed `plugin.zip` attached as a release asset. Use the uploaded
 asset, never GitHub's auto-generated source archives (wrong layout, unstable
