@@ -11,8 +11,8 @@ npx trek-plugin-sdk <command> [args]
 
 | Command | Needs | What it does |
 |---|---|---|
-| `create [name] [--type t] [--author x] [--description x] [--permissions "a,b"] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. |
-| `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. See [testing.md](testing.md). |
+| `create [name] [--type t] [--author x] [--description x] [--permissions "a,b"] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. **≥1.3.0:** page/widget scaffold emits a **design-kit client** (`<!-- trek:ui -->` marker + a `window.trek` UI). |
+| `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. **≥1.3.0:** also serves a themed host preview at **`/preview`** and expands the `<!-- trek:ui -->` marker on `/ui`. See [testing.md](testing.md). |
 | `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json`, missing `README.md`, or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, or scaffold placeholders remain. Since `pack` validates first, a missing README also fails `pack`. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
 | `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. |
 | `entry [dir] --repo <owner/name> --tag <vX.Y.Z> [--dir d] [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>] [--sign [key]]` | git | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, `minTrekVersion`. `--merge` prepends the new version (newest-first) and refuses a key switch / unsigned update to a signed plugin. |
@@ -52,6 +52,10 @@ inline SVG in the client and delete unused files before packing.
 Excluded: `node_modules`, `.git`, `.ts` sources, `.map` files — and **`docs/`
 intentionally** (the store fetches `docs/screenshot.png` from your repo at the
 pinned commit; keep it committed, out of the zip).
+
+**≥1.3.0:** every `.html` entering the zip is run through `injectTrekUi`, so a
+`<!-- trek:ui -->` marker is expanded into the inlined design kit at pack time
+(your source stays a one-liner).
 
 Refused: native binaries (`.node`, `binding.gyp`, `prebuilds/`); oversize
 archives. Limits: **25 MB per file, 50 MB total, 4000 entries**.

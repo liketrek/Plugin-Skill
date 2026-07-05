@@ -44,16 +44,26 @@ Fidelity details:
 
 ## Previewing the UI with an emulated host
 
-The dev server exposes three URLs: `/` (a dashboard listing your routes), `/ui`
-(your `client/index.html`, served with a 1s-poll **live-reload script injected**
-before `</body>` — other assets are byte-verbatim), and `/api/<path>` (your
-routes). Crucially,
-**nothing answers the postMessage bridge**: open `/ui` directly and no parent
-replies to `trek:ready` / `trek:invoke`, so a widget that fetches its state on
-boot stays stuck in its loading state and never receives `trek:context`
-(theme/locale). The dev server also sets **no CSP and no sandbox**, so `/ui`
-is *not* a faithful preview of the real frame (see the CSP caveat in
+The dev server exposes: `/` (a dashboard listing your routes), `/ui` (your
+`client/index.html` — live-reload injected, and on **≥ SDK 1.3.0** the
+`<!-- trek:ui -->` marker expanded; other assets byte-verbatim), `/api/<path>`
+(your routes), and — **≥ SDK 1.3.0** — **`/preview`**: a **themed host** that
+embeds `/ui` in a sandboxed opaque-origin iframe (exactly TREK's isolation) and
+speaks the full bridge — it posts `trek:context` with **light/dark + accent +
+appearance toggles**, proxies `trek:invoke` to `/api`, and handles
+resize/notify/navigate. So on ≥1.3.0 you preview the themed UI **without any
+harness** — just open `/preview`.
+
+`/preview` still sets **no CSP** (like `/ui`), so it reproduces the sandbox +
+bridge + theming but **not** the per-plugin CSP — validate image/font choices
+against the real frame (see the CSP caveat in
 [client-bridge.md](client-bridge.md)).
+
+**On older SDKs (≤1.2.1)** there is no `/preview` and **nothing answers the
+bridge**: open `/ui` and no parent replies to `trek:ready`/`trek:invoke`, so a
+widget stays stuck in its loading state. Build the small host harness below to
+drive it. (The harness is also the basis for the composed store image — see
+[store-shot.html](../assets/store-shot.html) — which `/preview` does not produce.)
 
 To exercise the full UI loop — and to capture a real `docs/screenshot.png` —
 wrap the frame in a tiny host harness that speaks the bridge and proxies invokes
@@ -162,9 +172,12 @@ when a grant is missing.
 export interface MockHostOptions {
   grants?: string[];                        // permissions to grant the ctx
   config?: Record<string, unknown>;         // becomes ctx.config (frozen)
+  actingUserId?: number;                    // (≥3.2.1) host-bound user — required for any costs.*
+  budgetAddonEnabled?: boolean;             // (≥3.2.1) default true; false → RESOURCE_FORBIDDEN
   /** Fixtures keyed by trip id; `members` gates access like the real host. */
   trips?: Record<number, { members: number[]; data?: unknown;
-                           places?: unknown[]; reservations?: unknown[] }>;
+                           places?: unknown[]; reservations?: unknown[];
+                           costs?: unknown[]; canEditCosts?: boolean }>;  // (≥3.2.1)
   users?: Record<number, unknown>;
   /** Canned db.query results, keyed by the EXACT sql string. */
   queryResults?: Record<string, unknown[]>;
@@ -210,6 +223,11 @@ Notes:
 - `calls` records the attempt **even when the grant is missing** (the entry is
   pushed before the permission check throws), so a `PERMISSION_DENIED` call still
   appears in `calls`.
+- **(≥3.2.1) Testing `ctx.costs.*`:** set `actingUserId` (the host-bound user)
+  and seed `trips[id].costs`. `canEditCosts: false` simulates a missing
+  `budget_edit` for `create`; `budgetAddonEnabled: false` simulates the addon
+  being off (both → `RESOURCE_FORBIDDEN`). Cover happy-path, missing-grant,
+  missing-`budget_edit`, and addon-off cases.
 - Mock ctx id is `mock-plugin`; `config` is frozen like the real one.
 - Differences vs the real host worth knowing: the mock's `trips.getById`
   honors the `asUserId` argument for membership checks (that's the point of

@@ -63,7 +63,7 @@ window.parent.postMessage(
 
 | Message | Payload |
 |---|---|
-| `trek:context` | `{ tripId, userId, theme, locale, hostOrigin }`. `tripId` is a **`string \| null`** — **`null` for every `page` plugin** and for a widget with no spotlighted trip; don't assume it's present. `userId` is a **string or `null`**. `theme` (`'light'`/`'dark'`) is sent by TREK 3.2.x, and **re-sent live when the user toggles in-app dark mode on ≥ 3.2.1** — so handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
+| `trek:context` | **3.2.0:** `{ tripId, userId, theme, locale, hostOrigin }`. **≥3.2.1 also sends** `user` (`{name, avatar, isAdmin}` or `null` — never email), `formats` (`{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`), `tokens` (the global palette for the current theme — see §1), and `appearance` (`{scheme, density, reducedMotion, noTransparency}`). `tripId` is **`string \| null`** (`null` for every `page` plugin and for a widget with no spotlighted trip). `userId` is a string or `null`. `theme` is `'light'`/`'dark'`. **Re-sent live** on any theme/appearance change (≥3.2.1 watches accent/density/high-contrast/reduced-motion too) — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
 | `trek:response` | `{ requestId, data }` — successful `trek:invoke` |
 | `trek:error` | `{ requestId, code, message }` — failed `trek:invoke`; `code` is the HTTP status or `"error"` |
 
@@ -135,14 +135,42 @@ Consequences:
 ## Making the UI feel native
 
 The frame inherits **none** of TREK's styling — not its stylesheet, theme class,
-or fonts. To look built-in rather than bolted-on, reproduce TREK's design
-language and drive it off `trek:context`.
+or fonts. There are two ways to match TREK's look; **prefer the design kit on
+≥3.2.1**, fall back to doing it by hand.
 
-### 1. Mirror TREK's design tokens
+### 0. The design kit (≥3.2.1 / SDK 1.3.0 — recommended)
 
-TREK's tokens live in `client/src/index.css` (`:root` = light, `.dark` = dark).
-Copy the ones you use into your own `:root` + a dark override. Real current
-values (verify against the source — they can drift):
+Drop the marker `<!-- trek:ui -->` in your `client/index.html` `<head>`; `dev`
+and `pack` expand it into an inlined, token-driven stylesheet + a `window.trek`
+bridge (from the SDK's `ui/kit.ts`; `create` scaffolds a client that uses it).
+You then get the native TREK look for free:
+
+- **Component classes** (the bootstrap adds `trek-ui` to `<body>`):
+  `.trek-glass` / `.trek-card`, `.trek-interactive`, `.trek-btn`
+  (`--primary`/`--secondary`/`--ghost`/`--danger`), `.trek-input` /
+  `.trek-textarea` / `.trek-select` / `.trek-label`, `.trek-chip`
+  (`--accent`/`--success`/`--danger`/`--warning`/`--info`), `.trek-row`,
+  `.trek-stack` / `.trek-cluster`, `.trek-title` / `.trek-muted` / `.trek-faint`.
+- **`window.trek`**: `onContext(cb)` (fires immediately if context already
+  arrived; returns an unsubscribe fn), `context`, `invoke(sub, {method, body})`
+  → Promise (rejects with an `Error` whose `.code` = the HTTP status), `notify`,
+  `navigate`, `resize`, `ready`, `requestContext`.
+- The kit **applies the live `tokens` + appearance for you**, **auto-reports
+  height** (no manual `trek:resize`), and **bakes the glassy layer**
+  (`--glass-*`, `--r-*`) that is deliberately *not* delivered in `tokens`.
+- **Preview it:** `npx trek-plugin-sdk dev`, then open **`/preview`** — a themed
+  host with light/dark + accent toggles (see [testing.md](testing.md)).
+
+The rest of this section is the **by-hand path** (no kit): reproduce the tokens
+and press-feel yourself, driving them off `trek:context`.
+
+### 1. Mirror TREK's design tokens (by hand / ≤3.2.0)
+
+**≥3.2.1 delivers the whole palette live in `m.tokens`** (and the kit applies it)
+— hardcode the hexes below only as a **pre-context default for first paint** and
+for **≤3.2.0** hosts that don't send `tokens`. TREK's tokens live in
+`client/src/index.css` (`:root` = light, `.dark` = dark); values (verify against
+the source — they can drift):
 
 | Token | Light | Dark |
 |---|---|---|
@@ -227,7 +255,8 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
   icons/marks and plain text so the plugin matches the host.
 - `--text-muted` for small uppercase kicker labels,
   `font-variant-numeric: tabular-nums` for counts.
-- **Buttons — TREK's exact spec** (from `index.css` + real components):
+- **Buttons — TREK's exact spec** (without the kit; ≥3.2.1's `.trek-btn` already
+  bakes all of this, so this block is the by-hand fallback):
   - Primary: `background:var(--accent); color:var(--accent-text);
     border:none; border-radius:8px` (`--radius-sm`); `padding:6px 16px`;
     `font-size:12px; font-weight:600`.
@@ -244,31 +273,34 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
     button:not(:disabled):active { transform: scale(0.97); transition-duration: 80ms; }
     ```
     Scale-press, not `translateY`. Guard with `prefers-reduced-motion`.
-- Call `trek:resize` after every render/content change so the card fits exactly.
+- Call `trek:resize` after every render/content change so the card fits exactly
+  (the design kit does this for you via a `ResizeObserver`).
 - Respect `prefers-reduced-motion` for any animation (koffi does).
 
-### 5. Don't draw your own card, and fit the fixed height — `sidebar` vs `page`
+### 5. Don't draw your own card — `sidebar` vs `page` (and the 3.2.0→3.2.1 change)
 
-A `sidebar` widget renders **inside TREK's own titled card**: the host wraps your
-frame in `<div class="bg-surface-card border border-edge rounded-xl
-overflow-hidden">` with a header showing your plugin's name, and puts the frame
-in a **fixed-height 180px box** (`PluginWidgets.tsx`, confirmed in a live
-instance). Two consequences:
+A `sidebar` widget renders **inside TREK's own titled card**, so your widget root
+must be **chrome-free** — a background, `border`, `border-radius`, or `box-shadow`
+on it produces a visible **card-in-card** (doubled borders, mismatched corners).
+Render **transparent and flush**; and because the widget is transparent, **pin
+`color-scheme` on `:root` per theme** (§2) or the frame paints an opaque light
+canvas behind dark-theme content. A full-bleed accent bar at the very top edge is
+fine — the card's `overflow-hidden` clips it to the rounded corners.
 
-- **Don't draw card chrome.** A background, `border`, `border-radius`, or
-  `box-shadow` on your root produces a visible **card-in-card** (doubled borders,
-  mismatched top corners). Render **transparent and flush**; use the tokens for
-  **text and controls**, keep the **container** bare. A full-bleed accent bar at
-  the very top edge is fine — the card's `overflow-hidden` clips it to the
-  rounded corners. **Because the widget is transparent, pin `color-scheme` on
-  `:root` per theme** (§2) — otherwise the frame paints an opaque light canvas
-  behind your dark-theme content.
-- **Build for ~180px — `trek:resize` will NOT grow a sidebar widget.** The slot
-  height is hard-coded and `overflow-hidden`, so content past ~180px (a footer
-  row, a reset button) is **permanently clipped**, in every version. The
-  `capabilities.widget.defaultSize` you declare does not change this. Put only
-  essentials above the fold and drop nice-to-haves; if the UI is inherently tall,
-  ship a **`page`** plugin instead.
+The card itself **changed between versions**:
+
+- **3.2.0:** a **solid, fixed-180px** box (`bg-surface-card border rounded-xl
+  overflow-hidden`, body `height:180`). **`trek:resize` does NOT grow it** —
+  content past ~180px is permanently clipped, and `defaultSize` doesn't change
+  this. Build for ~180px, essentials above the fold; if inherently tall, ship a
+  `page`.
+- **≥3.2.1:** a native **glassy auto-height tool card** (`--glass-bg/-border/
+  -shadow/-blur`, `--r-xl`, uppercase title + `Blocks` icon in `--ink-3`). The
+  body has only a **60px min-height floor** and **`trek:resize` drives the real
+  height** (the design kit reports it automatically) — no more 180px clip
+  (`PluginWidgets.tsx`).
+
+Either way, keep the root chrome-free and let the host draw the card.
 
 A `page` plugin is the **opposite**: it renders in a full-page shell with **no**
 host card (`PluginPage.tsx` → `PageShell` + a `w-full h-full` frame), so you own
