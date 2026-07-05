@@ -29,13 +29,20 @@ and its community registry
 ```
 skills/trek-plugin-dev/
 ├── SKILL.md                    # entry point: workflow, rules, decision tables
-└── references/
-    ├── manifest.md             # trek-plugin.json + permissions + egress
-    ├── server-api.md           # definePlugin, ctx, routes, jobs
-    ├── client-bridge.md        # iframe sandbox + postMessage protocol
-    ├── testing.md              # dev server + createMockHost
-    ├── cli.md                  # all trek-plugin CLI commands
-    └── publishing.md           # releases, registry entry, CI gates, signing
+├── references/
+│   ├── manifest.md             # trek-plugin.json + permissions + egress
+│   ├── server-api.md           # definePlugin, ctx, routes, jobs, planner writes
+│   ├── client-bridge.md        # iframe sandbox + postMessage + design kit
+│   ├── testing.md              # dev server, /preview, createMockHost, dev-kit
+│   ├── cli.md                  # all trek-plugin CLI commands
+│   └── publishing.md           # releases, registry entry, CI gates, signing
+└── assets/                     # vendorable dev-kit
+    ├── setup.sh                # bootstrap the kit into a plugin repo (--web-hook)
+    ├── shot.mjs                # screenshot helper → docs/screenshot.png + preview
+    ├── store-shot.html         # composed store-image template (light+dark)
+    ├── session-start.sh        # Claude Code web SessionStart hook
+    ├── gitattributes           # reproducible plugin.zip (eol=lf)
+    └── dev-fixtures.example.json
 ```
 
 ## Install

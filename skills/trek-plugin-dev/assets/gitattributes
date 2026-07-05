@@ -1,0 +1,13 @@
+# Reproducible plugin.zip — `pack` hashes the working tree, so line-ending drift
+# (Windows core.autocrlf) makes the same commit produce a different sha256/size.
+# Normalise text to LF; keep binaries untouched. (Save this file as `.gitattributes`.)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.zip binary
+*.woff binary
+*.woff2 binary

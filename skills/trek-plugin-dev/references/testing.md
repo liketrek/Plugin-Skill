@@ -42,6 +42,38 @@ Fidelity details:
 }
 ```
 
+## Dev kit — screenshots + reproducible builds in one step
+
+The skill ships a small vendorable dev-kit under
+[`assets/`](../assets/). `setup.sh` drops it into your plugin repo (which must
+already contain `trek-plugin.json` — scaffold with `create` first):
+
+```bash
+bash <skill>/skills/trek-plugin-dev/assets/setup.sh            # dev-kit only
+bash <skill>/skills/trek-plugin-dev/assets/setup.sh --web-hook # + a Claude Code web SessionStart hook
+```
+
+It adds:
+
+- **`scripts/shot.mjs`** (+ `scripts/store-shot.html`) and npm scripts:
+  - `npm run preview-shot` → `docs/preview-light.png` + `docs/preview-dark.png`
+    (the **real** widget via dev's `/preview`, SDK ≥ 1.3.0) — **show these for UI
+    sign-off**.
+  - `npm run shot` → `docs/screenshot.png` (the composed store image; edit
+    `scripts/store-shot.html`'s CONFIG first). `shot.mjs` starts `dev`, captures
+    at 1600×900, and stops it; it places the harness in `client/` **only** for the
+    shot and deletes it, so it never ships in `plugin.zip`.
+- **`.gitattributes`** (`* text=auto eol=lf`) so `plugin.zip`'s sha256/size are
+  reproducible across platforms (the CRLF trap).
+- **`dev-fixtures.json`** template for the dev server.
+- **`--web-hook`:** a **SessionStart hook** (`.claude/hooks/plugin-dev.sh`, wired
+  into `.claude/settings.json`) that runs `npm install` on each new session — so a
+  **Claude Code web** session on the plugin repo is `dev`/`shot`-ready with no
+  manual step. Chromium is preinstalled there; no `playwright install` needed.
+
+Needs `playwright` (a devDependency `setup.sh` adds) + a Chromium (present in
+Claude Code environments).
+
 ## Previewing the UI with an emulated host
 
 The dev server exposes: `/` (a dashboard listing your routes), `/ui` (your

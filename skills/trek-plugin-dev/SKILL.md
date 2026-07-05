@@ -79,8 +79,13 @@ suggestions derived from what the plugin does**:
 
 **2. Show the draft as a screenshot for sign-off** — don't ship on a description:
 
-- Drive it headlessly (Chromium/Playwright is preinstalled). Screenshot **both
-  light and dark**.
+- **One command:** the dev-kit's `npm run preview-shot` writes
+  `docs/preview-light.png` + `docs/preview-dark.png` (the real widget via
+  `/preview`); `npm run shot` writes the composed store image. Set it up once with
+  [`assets/setup.sh`](assets/setup.sh) (`--web-hook` for Claude Code web). See
+  [references/testing.md](references/testing.md#dev-kit--screenshots--reproducible-builds-in-one-step).
+- Or drive it headlessly yourself (Chromium/Playwright is preinstalled).
+  Screenshot **both light and dark**.
 - **≥ SDK 1.3.0:** open `dev`'s themed **`/preview`** (light/dark/accent toggles).
 - **For the composed store image:** the ready-made
   [`assets/store-shot.html`](assets/store-shot.html) renders both-theme cards +
