@@ -13,7 +13,7 @@ that adds/updates exactly that file. No server, no account.
 trek-plugin.json      # manifest
 package.json          # "type": "commonjs"; SDK as devDependency at most
 server/index.js       # built server entry (required)
-client/               # built frontend (page/widget only)
+client/               # built frontend (page/widget, and trip-page ≥3.2.1)
 README.md             # must pass the quality gate (below)
 docs/screenshot.png   # store card image — committed, NOT shipped in the zip
 ```
@@ -59,7 +59,7 @@ Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
 | `repo` | `owner/name` (GitHub). Source of truth for the code. |
 | `homepage` | Optional URI. |
 | `tags` | Optional; up to 8 slugs matching `^[a-z0-9-]{2,24}$`. |
-| `type` | `integration` \| `page` \| `widget`. |
+| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — a `trip-page` entry only passes the manifest-parity gate against the v3-2-1 schema. |
 | `authorPublicKey` | Optional base64 **raw Ed25519** public key (the 32-byte key; schema allows 40–120 chars). Stable across versions; TOFU-pinned on first install. |
 | `reviewedAt`, `boundOwner` | **CI-maintained — never set these yourself.** |
 | `versions` | Array, min 1, **newest first**. |

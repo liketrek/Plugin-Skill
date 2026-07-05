@@ -8,7 +8,7 @@ description: Build, test, and publish plugins for TREK, the self-hosted travel p
 Build plugins for [TREK](https://github.com/mauriceboe/TREK), a self-hosted
 trip-planning app. A plugin is a directory with a manifest (`trek-plugin.json`),
 a built CommonJS server entry (`server/index.js`), and — for `page`/`widget`
-types — a static client bundle (`client/`). TREK runs the server part in an
+(and `trip-page`, ≥3.2.1) types — a static client bundle (`client/`). TREK runs the server part in an
 **isolated child process** reached only over RPC, and the UI in a **sandboxed,
 opaque-origin iframe**. Distribution happens through the
 [TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins) registry: a static
@@ -95,8 +95,9 @@ See [references/testing.md](references/testing.md).
 
 | `type` | Surfaces | Use for |
 |---|---|---|
-| `widget` | Dashboard card (`sidebar` slot, fixed ~180px) or a **non-interactive** boarding-pass hero strip (`hero` slot, fixed ~110px, desktop-only, `pointer-events:none`) | At-a-glance info (flight status, weather, mascot) |
+| `widget` | Dashboard card (`sidebar` slot — ~180px on 3.2.0, glassy auto-height on ≥3.2.1) or a **non-interactive** boarding-pass hero strip (`hero` slot, ~110px, desktop-only). **(≥3.2.1)** also the `place-detail` slot → a panel in the trip planner's place inspector (gets `placeId`) | At-a-glance info (flight status, weather, mascot); a per-place add-on |
 | `page` | Own entry in the top navigation → full-page iframe (you own the layout) | A self-contained tool |
+| `trip-page` **(≥3.2.1)** | A tab **inside every trip planner**, scoped to the open trip (`tripId` always set); full-frame like `page`, no dashboard nav | A per-trip tool |
 | `integration` | No UI; background routes only | Feeding/syncing data via routes |
 
 Note: the SDK's `hooks` surface (`photoProvider`, `calendarSource`) validates
@@ -120,15 +121,18 @@ with **routes** (polled by your client or an external trigger), not jobs. See
    only checked for presence). A host listed in `egress[]` but not granted as
    `http:outbound:<host>` is **silently blocked at runtime**. Keep both lists
    identical. Bare `http:outbound` alone reaches nothing.
-4. **`ctx.trips`, `ctx.users`, `ctx.costs`, and `ctx.ws.*` work only inside route
-   handlers** — they need the acting user the host binds from the request; from
-   `onLoad` there is no user → `RESOURCE_FORBIDDEN`. `asUserId` is ignored;
-   `ctx.users` returns only self or a trip co-member (not any account);
-   `ctx.ws.broadcastToUser` can target only the acting user — and **none of these
-   broadcasts reach your own iframe** (poll your route via `trek:invoke` instead).
-   `ctx.costs.*` **(≥3.2.1)** also needs the Costs (budget) addon enabled, and
-   `ctx.costs.create` additionally needs the acting user's `budget_edit`
-   permission (it's the only plugin path that writes core TREK data).
+4. **`ctx.trips`, `ctx.users`, `ctx.costs`, `ctx.ws.*` — and (≥3.2.1)
+   `ctx.places`/`ctx.days`/`ctx.itinerary`/`ctx.trips.update`/`ctx.meta` — work
+   only inside route handlers** (they need the acting user the host binds from the
+   request; from `onLoad`/jobs → `RESOURCE_FORBIDDEN`). `asUserId` is ignored;
+   `ctx.users` returns only self or a trip co-member; `ctx.ws.broadcastToUser`
+   targets only the acting user — and **no broadcast reaches your own iframe**
+   (poll via `trek:invoke`). **(≥3.2.1) several `ctx.*` paths now write core TREK
+   data** (`places`/`days`/`itinerary`/`trips.update`, plus `costs.create`): each
+   is route-only and gated on the acting user's matching edit permission
+   (`place_edit`/`day_edit`/`trip_edit`/`budget_edit`), exactly like the web UI.
+   `ctx.meta` stores the plugin's own namespaced data on a trip/place/day (reads
+   need trip access, writes the entity's edit permission).
 5. **No native modules** — `.node`, `binding.gyp`, `prebuilds/` are refused at
    pack, CI, and install time. `nativeModules` must be `false`/absent.
 6. **Git tag == manifest `version`** (`v1.2.3` ↔ `"version": "1.2.3"`), and the

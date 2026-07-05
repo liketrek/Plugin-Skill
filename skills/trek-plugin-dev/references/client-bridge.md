@@ -1,8 +1,8 @@
 # Client bridge — sandboxed iframe and postMessage protocol
 
-Only `page` and `widget` plugins have a client. It is a **pre-built static
-bundle** in `client/` (entry `client/index.html`) — no build step at install
-time.
+`page`, `widget`, and **`trip-page` (≥3.2.1)** plugins have a client — a
+**pre-built static bundle** in `client/` (entry `client/index.html`), no build
+step at install time.
 
 ## The sandbox
 
@@ -63,7 +63,7 @@ window.parent.postMessage(
 
 | Message | Payload |
 |---|---|
-| `trek:context` | **3.2.0:** `{ tripId, userId, theme, locale, hostOrigin }`. **≥3.2.1 also sends** `user` (`{name, avatar, isAdmin}` or `null` — never email), `formats` (`{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`), `tokens` (the global palette for the current theme — see §1), and `appearance` (`{scheme, density, reducedMotion, noTransparency}`). `tripId` is **`string \| null`** (`null` for every `page` plugin and for a widget with no spotlighted trip). `userId` is a string or `null`. `theme` is `'light'`/`'dark'`. **Re-sent live** on any theme/appearance change (≥3.2.1 watches accent/density/high-contrast/reduced-motion too) — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
+| `trek:context` | **3.2.0:** `{ tripId, userId, theme, locale, hostOrigin }`. **≥3.2.1 also sends** `user` (`{name, avatar, isAdmin}` or `null` — never email), `formats` (`{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`), `tokens` (the global palette for the current theme — see §1), and `appearance` (`{scheme, density, reducedMotion, noTransparency}`). `tripId` is **`string \| null`** — `null` for a `page` plugin and a widget with no spotlighted trip, but **set for a `trip-page` tab and a `place-detail` widget** (≥3.2.1). **≥3.2.1 also adds `placeId`** (`string \| null`): the place in view for a `place-detail` widget, else `null`. `userId` is a string or `null`. `theme` is `'light'`/`'dark'`. **Re-sent live** on any theme/appearance change (≥3.2.1 watches accent/density/high-contrast/reduced-motion too) — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
 | `trek:response` | `{ requestId, data }` — successful `trek:invoke` |
 | `trek:error` | `{ requestId, code, message }` — failed `trek:invoke`; `code` is the HTTP status or `"error"` |
 
@@ -82,9 +82,11 @@ window.parent.postMessage(
   [server-api.md](server-api.md).
 - Secrets (`secret: true` settings) are **never** delivered to the iframe —
   fetch derived data through your own server route instead.
-- Widget slots: `sidebar` renders as a dashboard card, `hero` as a
-  boarding-pass-bar overlay (TREK >= 3.2.0). Set in
-  `capabilities.widget.slot`.
+- Widget slots (`capabilities.widget.slot`): `sidebar` renders as a dashboard
+  card, `hero` as a boarding-pass-bar overlay (TREK >= 3.2.0), and **`place-detail`
+  (≥3.2.1)** as a panel in the trip planner's place inspector (trip mode only,
+  gets `placeId`; not shown on the dashboard). A **`trip-page`** *type* (not a
+  widget slot) mounts a full-frame tab inside every trip planner.
 
 Reference implementation: `plugin-sdk/examples/koffi/client/index.html`
 (single self-contained HTML file: `trek:ready` → `trek:context` →
@@ -332,3 +334,10 @@ sitting directly on top of the boarding pass (`DashboardPage.tsx` +
 So build a short, wide, **non-interactive** visual (like the koffi mascot), not a
 control surface. Need interactivity or height? Use a `sidebar` widget or a
 `page`.
+
+**(≥3.2.1)** A **`trip-page`** renders like a `page` — a full-surface iframe
+inside a trip-planner tab where you own the layout and `trek:resize` drives the
+height — but it's **trip-scoped** (`tripId` always set), so it's the home for a
+per-trip tool. A **`place-detail`** widget is a small **chrome-free scoped card**
+in the place inspector (like a sidebar widget) and receives both `tripId` and
+`placeId` — build it compact and about the one place in view.
