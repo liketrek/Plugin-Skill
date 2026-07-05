@@ -145,6 +145,13 @@ The light+dark pair reads as a real product card and signals theme support at a
 glance. Swap each frame's mocked `state` (e.g. healthy vs. alert) to also show
 the widget *doing something*, not just sitting idle.
 
+**Ready-made template:** [`assets/store-shot.html`](../assets/store-shot.html)
+implements exactly this layout (gradient, title/tagline, both-theme cards with
+TREK card chrome, pills, per-`e.source` bridge). Copy it to `client/harness.html`,
+edit the `CONFIG` block (name, tagline, pills, the two frames' theme + mocked
+`state`), open `/ui/harness.html`, screenshot at 1600×900 — then **delete it
+before `pack`**.
+
 ## `createMockHost` — unit tests
 
 Import from **`trek-plugin-sdk/testing`**. The mock enforces the **same**

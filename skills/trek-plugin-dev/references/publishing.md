@@ -165,7 +165,9 @@ themed background** (gradient + tagline + a couple of feature pills — plain
 CSS/SVG in the harness page, which is *not* under the frame CSP), and show
 **light + dark (and, if useful, two data states) at once** via the per-iframe
 multi-context recipe in [testing.md](testing.md#one-screenshot-multiple-themesstates).
-Keep the composition centred for the card crop.
+Keep the composition centred for the card crop. A ready-to-edit template that
+produces exactly this shot ships with the skill:
+[`assets/store-shot.html`](../assets/store-shot.html).
 
 ## Signing (optional, recommended)
 

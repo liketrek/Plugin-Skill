@@ -1,0 +1,159 @@
+<!doctype html>
+<!--
+  store-shot.html — a 1600x900 store-preview composer for a TREK widget plugin.
+
+  HOW TO USE
+  1. Copy this file into your plugin as `client/harness.html`.
+     (`trek-plugin dev` serves the whole client/ tree, so it appears at
+      http://localhost:4317/ui/harness.html — same-origin with /api, no CORS.)
+  2. Run `npx trek-plugin-sdk dev .`
+  3. Edit the CONFIG block below: plugin name, tagline, feature pills, and the
+     per-frame theme + mocked state your widget's route(s) return.
+  4. Open http://localhost:4317/ui/harness.html and screenshot at 1600x900
+     (e.g. Playwright: viewport 1600x900, deviceScaleFactor 1,
+      page.screenshot({ path: 'docs/screenshot.png' })).
+  5. !!! DELETE client/harness.html before `pack` !!! — `pack` zips the entire
+     client/ tree, so a stray harness ships inside plugin.zip.
+
+  This page is NOT under the plugin CSP (it's the host, not the frame), so it may
+  use gradients/layout freely. It draws TREK-style card chrome around each widget
+  frame for presentation — your real widget still renders chrome-free inside
+  TREK's own card (see client-bridge.md §5).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Store shot</title>
+<style>
+  /* ── Recolor the shot by changing --accent ── */
+  :root {
+    --accent: #4f46e5;                 /* your brand/accent — tints the background + pills */
+    --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  /* The screenshot frame. Keep everything important inside .safe (centre ~1040px)
+     so the 16:10 Discover-card crop never clips it. */
+  body {
+    width: 1600px; height: 900px; overflow: hidden;
+    font-family: var(--font);
+    display: flex; align-items: center; justify-content: center;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, color-mix(in srgb, var(--accent) 22%, #fff), transparent 60%),
+      linear-gradient(160deg, #f6f7fb 0%, #eef0f6 55%, #e9ebf3 100%);
+  }
+  .safe { width: 1040px; text-align: center; }
+
+  .title { font-size: 34px; font-weight: 700; color: #111827; letter-spacing: -0.02em; }
+  .tagline { margin-top: 10px; font-size: 16px; font-weight: 500; color: #6b7280; }
+
+  .cards { margin-top: 40px; display: flex; gap: 32px; justify-content: center; }
+
+  /* TREK card chrome — mimics PluginWidgets.tsx (header + border + radius + shadow). */
+  .card { width: 460px; border-radius: 16px; overflow: hidden; border: 1px solid; }
+  .card .head {
+    padding: 8px 12px; font-size: 12px; font-weight: 600; text-align: left;
+    border-bottom: 1px solid;
+  }
+  .card iframe { display: block; width: 100%; height: 180px; border: 0; background: transparent; }
+  .card .badge { padding: 6px 0 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+                 text-transform: uppercase; color: #9ca3af; text-align: center; }
+
+  /* Light palette (TREK :root tokens) */
+  .card.light { background: #ffffff; border-color: rgba(0,0,0,0.06);
+                box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04); }
+  .card.light .head { color: #6b7280; border-color: rgba(0,0,0,0.06); }
+
+  /* Dark palette (TREK .dark tokens) */
+  .card.dark { background: #131316; border-color: rgba(255,255,255,0.07);
+               box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .card.dark .head { color: #a1a1aa; border-color: rgba(255,255,255,0.07); }
+
+  .pills { margin-top: 34px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .pill {
+    padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    color: #374151; background: rgba(0,0,0,0.04);
+    border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+</style>
+</head>
+<body>
+  <div class="safe">
+    <div class="title" id="title"></div>
+    <div class="tagline" id="tagline"></div>
+    <div class="cards" id="cards"></div>
+    <div class="pills" id="pills"></div>
+  </div>
+
+<script>
+  // ─────────────────────────────────────────────────────────────────────────
+  // CONFIG — edit this. `state` is what your route(s) return via trek:invoke;
+  // give the two frames different states to show the widget actually doing
+  // something (e.g. plenty-of-time vs. departing-soon), one light + one dark.
+  // ─────────────────────────────────────────────────────────────────────────
+  const CONFIG = {
+    uiUrl: '/ui',                       // the widget's own client bundle
+    name: 'Your Plugin',
+    tagline: 'One line on what it does and why it belongs on the dashboard.',
+    pills: ['Membership-checked', 'Light & dark', 'No network', 'Zero setup'],
+    frameHeight: 180,                   // 180 = TREK sidebar slot; raise for taller widgets
+    locale: 'en',
+    frames: [
+      { theme: 'light', label: 'Light', tripId: 1, state: { /* your GET /… payload */ } },
+      { theme: 'dark',  label: 'Dark',  tripId: 1, state: { /* a different state */ } },
+    ],
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  document.getElementById('title').textContent = CONFIG.name
+  document.getElementById('tagline').textContent = CONFIG.tagline
+  document.getElementById('pills').innerHTML =
+    CONFIG.pills.map(p => `<span class="pill"></span>`).join('')
+  document.querySelectorAll('.pill').forEach((el, i) => { el.textContent = CONFIG.pills[i] })
+
+  // Build one column (card + theme label) per configured frame and register it.
+  const frames = []   // { iframe, cfg }
+  const cards = document.getElementById('cards')
+  for (const cfg of CONFIG.frames) {
+    const col = document.createElement('div')
+    const card = document.createElement('div')
+    card.className = 'card ' + (cfg.theme === 'dark' ? 'dark' : 'light')
+    const head = document.createElement('div'); head.className = 'head'; head.textContent = CONFIG.name
+    const iframe = document.createElement('iframe')
+    iframe.src = CONFIG.uiUrl
+    iframe.style.height = CONFIG.frameHeight + 'px'
+    card.appendChild(head); card.appendChild(iframe); col.appendChild(card)
+    if (cfg.label) {
+      const badge = document.createElement('div'); badge.className = 'badge'; badge.textContent = cfg.label
+      col.appendChild(badge)
+    }
+    cards.appendChild(col)
+    frames.push({ iframe, cfg })
+  }
+
+  // Per-frame host bridge, keyed by e.source (each iframe's contentWindow).
+  addEventListener('message', (e) => {
+    const f = frames.find(fr => fr.iframe.contentWindow === e.source)
+    if (!f) return
+    const m = e.data; if (!m || typeof m !== 'object') return
+    if (m.type === 'trek:ready' || m.type === 'trek:context:request') {
+      e.source.postMessage({
+        type: 'trek:context',
+        tripId: f.cfg.tripId ?? null,
+        userId: '1',
+        theme: f.cfg.theme,
+        locale: CONFIG.locale,
+        hostOrigin: '*',
+      }, '*')
+    } else if (m.type === 'trek:invoke') {
+      // Reply to any of the widget's routes with this frame's mocked state.
+      // Branch on m.sub here if your widget calls several routes.
+      e.source.postMessage({ type: 'trek:response', requestId: m.requestId, data: f.cfg.state }, '*')
+    } else if (m.type === 'trek:resize') {
+      const h = Math.max(120, Math.min(Number(m.height) || CONFIG.frameHeight, 520))
+      f.iframe.style.height = h + 'px'
+    }
+  })
+</script>
+</body>
+</html>
