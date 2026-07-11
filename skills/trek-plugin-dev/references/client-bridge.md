@@ -55,45 +55,46 @@ window.parent.postMessage(
 | `trek:ready` | — | TREK replies with `trek:context` |
 | `trek:context:request` | — | Re-request the context |
 | `trek:navigate` | `{ to }` | In-app navigation to an **app-absolute path** (must start with `/`, query string allowed; protocol-relative `//…` is rejected) — it is **not** limited to relative paths |
-| `trek:notify` | `{ level, message }`; **≥3.2.2** also an optional `duration` (ms, host-clamped to ~1500–15000) | Toast; `level` = `info` \| `success` \| `warning` \| `error`. On ≤3.2.1 `duration` is ignored (host default timeout) |
+| `trek:notify` | `{ level, message }`; **≥3.3.0** also an optional `duration` (ms, host-clamped to ~1500–15000) | Toast; `level` = `info` \| `success` \| `warning` \| `error`. On ≤3.2.1 `duration` is ignored (host default timeout) |
 | `trek:resize` | `{ height }` | Set iframe height (capped at 2000 px) |
 | `trek:invoke` | `{ requestId, sub, method, body }` | Call your own route (`sub` is the path below `/api/plugins/<id>`, query string allowed); resolves as `trek:response` or `trek:error` |
-| `trek:openExternal` **(host ≥3.2.2)** | `{ url }` | Ask the host to open an `http`/`https` URL in a new browser tab (the sandbox has no `allow-popups`). **≤3.2.1 hosts silently ignore it** (links "do nothing") — always use the fallback chain in [Opening external links](#opening-external-links-trekopenexternal) |
-| `trek:confirm` **(host ≥3.2.2)** | `{ requestId, message, … }` | Ask the host to render a **native** confirm dialog (one at a time; the host always leads the title with the plugin name, so a plugin can't spoof a TREK system dialog). The host answers with `trek:confirm:result` (correlate by `requestId`). **≤3.2.1: no reply ever comes** — pair it with a timeout or an in-frame fallback dialog |
+| `trek:openExternal` **(host ≥3.3.0)** | `{ url }` | Ask the host to open an `http`/`https` URL in a new browser tab (the sandbox has no `allow-popups`). **≤3.2.1 hosts silently ignore it** (links "do nothing") — always use the fallback chain in [Opening external links](#opening-external-links-trekopenexternal) |
+| `trek:confirm` **(host ≥3.3.0)** | `{ requestId, title?, message, confirmLabel?, cancelLabel?, danger? }` (host-truncated: title ≤120, message ≤500, labels ≤40) | Ask the host to render a **native** confirm dialog (one at a time). The shown title is always `"<pluginName> — <title>"` (just the plugin name if no title), so a plugin can't spoof a TREK system dialog. ⚠️ **`danger` defaults to TRUE** (`danger: msg.danger !== false`) — an unspecified confirm renders **destructive/red**; pass `danger:false` for a neutral one. Host answers with `trek:confirm:result` (correlate by `requestId`). **≤3.2.1: no reply ever comes** — pair with a timeout or an in-frame fallback dialog |
 
 ### Messages TREK sends you (host bridge)
 
 | Message | Payload |
 |---|---|
-| `trek:context` | **3.2.0:** `{ tripId, userId, theme, locale, hostOrigin }`. **≥3.2.1 also sends** `user` (`{name, avatar, isAdmin}` or `null` — never email), `formats` (`{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`), `tokens` (the global palette for the current theme — see §1), and `appearance` (`{scheme, density, reducedMotion, noTransparency}`). `tripId` is **`string \| null`** — `null` for a `page` plugin and a widget with no spotlighted trip, but **set for a `trip-page` tab and a `place-detail` widget** (≥3.2.1). **≥3.2.1 also adds `placeId`** (`string \| null`): the place in view for a `place-detail` widget, else `null`. **≥3.2.2 also adds `dir`** (`'ltr' \| 'rtl'`) for the current locale's writing direction; the kit sets `lang` + `dir` on `<html>` from it, so kit-styled UI is RTL-correct for free (hand-rolled UIs should mirror it themselves). `userId` is a string or `null`. `theme` is `'light'`/`'dark'`. **Re-sent live** on any theme/appearance change (≥3.2.1 watches accent/density/high-contrast/reduced-motion too) — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
+| `trek:context` | **3.2.0:** `{ tripId, userId, theme, locale, hostOrigin }`. **≥3.2.1 also sends** `user` (`{name, avatar, isAdmin}` or `null` — never email), `formats` (`{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`), `tokens` (the global palette for the current theme — see §1), and `appearance` (`{scheme, density, reducedMotion, noTransparency}`). `tripId` is **`string \| null`** — `null` for a `page` plugin and a widget with no spotlighted trip, but **set for a `trip-page` tab and a `place-detail` widget** (≥3.2.1). **≥3.2.1 also adds `placeId`** (`string \| null`): the place in view for a `place-detail` widget, else `null`. **≥3.3.0 also adds `dayId` and `reservationId`** (`string \| null`) alongside `placeId` — each set only for its own scoped slot (`day-detail` → `dayId`, `reservation-detail` → `reservationId`), else `null`. **≥3.3.0 also adds `dir`** (`'ltr' \| 'rtl'`) for the current locale's writing direction; the kit sets `lang` + `dir` on `<html>` from it, so kit-styled UI is RTL-correct for free (hand-rolled UIs should mirror it themselves). `userId` is a string or `null`. `theme` is `'light'`/`'dark'`. **Re-sent live** on any theme/appearance change (≥3.2.1 watches accent/density/high-contrast/reduced-motion too) — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
 | `trek:response` | `{ requestId, data }` — successful `trek:invoke` |
 | `trek:error` | `{ requestId, code, message }` — failed `trek:invoke`; `code` is the HTTP status or `"error"` |
-| `trek:confirm:result` **(host ≥3.2.2)** | `{ requestId, confirmed }` — reply to your `trek:confirm` |
-| `trek:event` **(host ≥3.2.2)** | `{ event, tripId }` — live push of a trip event into the frame for the trip in view: **core events** (`place:created`, `day:updated`, …) **and your own `plugin:<id>:*` broadcasts**. Carries **only** the event name + `tripId`, never the payload — fetch details via `trek:invoke`. This is the **client-side counterpart of the server `events` surface**, and the first path that lets your own `ctx.ws.broadcast*` reach your iframe (≤3.2.1 it never arrived — see [server-api.md](server-api.md)). Still treat it as an accelerator on top of polling; ≤3.2.1 hosts never send it |
+| `trek:confirm:result` **(host ≥3.3.0)** | `{ requestId, confirmed }` — reply to your `trek:confirm` |
+| `trek:event` **(host ≥3.3.0)** | `{ event, tripId }` — live push of a trip event into the frame for the trip in view: **core events** (`place:created`, `day:updated`, …) **and your own `plugin:<id>:*` broadcasts**. Carries **only** the event name + `tripId`, never the payload — fetch details via `trek:invoke`. This is the **client-side counterpart of the server `events` surface**, and the first path that lets your own `ctx.ws.broadcast*` reach your iframe (≤3.2.1 it never arrived — see [server-api.md](server-api.md)). Still treat it as an accelerator on top of polling; ≤3.2.1 hosts never send it |
 
 > **`openExternal`/`confirm`/`onEvent` need BOTH a new host AND a new kit.** Two
 > independent version floors:
-> - **Host side (TREK ≥ 3.2.2):** the host must *handle* `trek:openExternal` /
+> - **Host side (TREK ≥ 3.3.0):** the host must *handle* `trek:openExternal` /
 >   `trek:confirm` and *send* `trek:event` / `trek:confirm:result`. On ≤3.2.1
 >   these messages are ignored — the wire calls are inert no matter what SDK you
 >   built with.
 > - **Client side (SDK ≥ 1.4.0):** the kit helpers `trek.openExternal(url)`,
->   `trek.confirm(opts)` (→ `Promise<boolean>`), and `trek.onEvent(cb)` exist
->   only in the 1.4.0 kit. **`npx trek-plugin-sdk` currently resolves 1.3.1**,
->   whose inlined kit does *not* have them (calling them is a TypeError).
+>   `trek.confirm(opts)` (→ `Promise<boolean>`), and `trek.onEvent(cb)`. **`npx
+>   trek-plugin-sdk` resolves 1.4.0**, so a fresh scaffold has them; a client
+>   still built with an older **1.3.x** kit does not (calling them is a TypeError).
 >
 > The wire protocol is the real contract — you can send/handle these messages
 > with hand-rolled `postMessage` on **any** SDK (many plugins roll the bridge
-> themselves; `window.trek` is just sugar). So on a 1.3.x kit, speak the wire
-> messages directly (they coexist with the rest of the kit), and always keep the
-> ≤3.2.1 host fallbacks below — a plugin ships to hosts of both versions.
+> themselves; `window.trek` is just sugar). On an older 1.3.x kit, speak the wire
+> messages directly (they coexist with the rest of the kit). Either way **keep the
+> ≤3.2.1 host fallbacks below** — right after a 3.3.0 release most instances are
+> still on 3.2.x, and a plugin ships to hosts of both versions.
 
 ### Opening external links (`trek:openExternal`)
 
 Plain `<a target="_blank">` / `window.open()` can be blocked: the sandbox is
 `allow-scripts allow-forms` — **no `allow-popups`** — so the real frame typically
 blocks popups. And the `trek:openExternal` bridge message is only handled by
-**hosts ≥ 3.2.2**; on ≤3.2.1 hosts it is silently ignored, so a naive link is
+**hosts ≥ 3.3.0**; on ≤3.2.1 hosts it is silently ignored, so a naive link is
 **completely dead** (observed on a real instance: clicks "did nothing"). On SDK
 ≥ 1.4.0 `trek.openExternal(url)` wraps the bridge send, but you still need the
 same ≤3.2.1 fallback. Use the fallback chain and keep the URL user-visible as a
@@ -127,8 +128,12 @@ function openExternal(url) {
 - Widget slots (`capabilities.widget.slot`): `sidebar` renders as a dashboard
   card, `hero` as a boarding-pass-bar overlay (TREK >= 3.2.0), and **`place-detail`
   (≥3.2.1)** as a panel in the trip planner's place inspector (trip mode only,
-  gets `placeId`; not shown on the dashboard). A **`trip-page`** *type* (not a
-  widget slot) mounts a full-frame tab inside every trip planner.
+  gets `placeId`; not shown on the dashboard). **≥3.3.0 adds two more scoped
+  slots:** **`day-detail`** (mounts at the foot of the day panel, gets `dayId`)
+  and **`reservation-detail`** (mounts under each reservation/journey card, gets
+  `reservationId`) — both chrome-free scoped cards like `place-detail`. A
+  **`trip-page`** *type* (not a widget slot) mounts a full-frame tab inside every
+  trip planner.
 
 Reference implementation: `plugin-sdk/examples/koffi/client/index.html`
 (single self-contained HTML file: `trek:ready` → `trek:context` →
@@ -156,7 +161,22 @@ void at the opaque origin:
 | `@font-face` from a bundled `.woff2` or Google Fonts | ❌ | `font-src` is `'self' data:` — `'self'` is void, no host allowed |
 | `@font-face` from a `data:` URL | ✅ | `font-src` includes `data:` |
 
-Consequences:
+> **≥3.3.0 re-enables your OWN bundled assets.** In 3.3.0 the per-plugin frame
+> CSP appends a scheme-less **own-path host-source** `<host>/plugin-frame/<id>/`
+> to `script-src`, `style-src`, `img-src`, `font-src` **and** `connect-src`. So
+> the four ❌ own-path rows above flip to **✅ on ≥3.3.0 (own path only)**:
+> `<img src="./logo.png">`, `background-image:url(./x.png)`, inline-SVG
+> `<image href="./x.png">`, and `@font-face` from a bundled `.woff2` all load —
+> and a **multi-file Vite/React build** referencing `./assets/*.js|*.css` works
+> **without inlining**. `'self'` still matches nothing at the opaque origin; it
+> is this explicit own-path source that re-enables them, and **only** when the
+> `Host` header matches `^[a-z0-9.-]+(:\d+)?$` and the id matches
+> `^[a-z][a-z0-9-]{2,39}$` — else it silently falls back to inline-only.
+> **External `https`/CDN hosts stay blocked;** `data:`/`blob:` still work.
+> Keep inlining as the **portable** path: ≤3.2.1 hosts still block these, and the
+> re-allow depends on a well-formed `Host` header.
+
+Consequences (**≤3.2.1 hosts** — for ≥3.3.0 own-path assets, see the note above):
 
 * You **cannot** reference a bundled file by path (`./logo.png`, `client/x.svg`)
   or any external URL for images/fonts — the opaque origin voids `'self'` and no
@@ -198,8 +218,8 @@ You then get the native TREK look for free:
 - **`window.trek`**: `onContext(cb)` (fires immediately if context already
   arrived; returns an unsubscribe fn), `context`, `invoke(sub, {method, body})`
   → Promise (rejects with an `Error` whose `.code` = the HTTP status), `notify`,
-  `navigate`, `resize`, `ready`, `requestContext`. (**SDK ≥ 1.4.0 + host ≥ 3.2.2
-  only** adds `openExternal`, `confirm`, `onEvent` — see the ≥3.2.2 additions
+  `navigate`, `resize`, `ready`, `requestContext`. (**SDK ≥ 1.4.0 + host ≥ 3.3.0
+  only** adds `openExternal`, `confirm`, `onEvent` — see the ≥3.3.0 additions
   below and the version note under [Protocol](#protocol); a 1.3.x kit doesn't
   have them.)
 - **`window.trek.ui`** (≥3.2.1) — bundler-free DOM builders that emit the kit's
@@ -215,10 +235,12 @@ You then get the native TREK look for free:
 - **Preview it:** `npx trek-plugin-sdk dev`, then open **`/preview`** — a themed
   host with light/dark + accent toggles (see [testing.md](testing.md)).
 
-#### Kit additions in ≥3.2.2 / SDK 1.4.0 (unreleased — npm latest is 1.3.1)
+#### Kit additions in the ≥3.3.0 / SDK 1.4.0 kit
 
-The upcoming SDK 1.4.0 kit (paired with a TREK ≥3.2.2 host) adds — **none of
-this is in the 1.3.1 kit `npx` gives you today**:
+The SDK 1.4.0 kit (paired with a TREK ≥3.3.0 host) adds the following. **`npx
+trek-plugin-sdk` resolves 1.4.0**, so a fresh scaffold has these; a plugin still
+built with an older **1.3.x** kit does **not** (and any host ≤3.2.1 ignores the
+host-side half regardless of kit):
 
 - **`<select>` auto-upgrade.** The kit bootstrap replaces every native
   `<select>` with a host-styled, keyboard-accessible listbox
@@ -345,8 +367,15 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
 
 ### 4. House style
 
-- **No emoji in the UI** — TREK's own interface is emoji-free. Use inline SVG
-  icons/marks and plain text so the plugin matches the host.
+- **No emoji — TREK is lucide-only.** TREK's own interface is emoji-free; use
+  inline SVG icons/marks (or the declarative `icon` lucide name in host-rendered
+  contributions) and plain text. ⚠️ **≥3.3.0 actively strips emoji** from **every
+  plugin-provided string the host renders in its own chrome** — `notify`
+  title/body, `tableContributor` columns/actions, trip-card badges, trip
+  warnings, map-marker labels, PDF/atlas/journal/place-detail text, etc. Only
+  real colour emoji are removed (text symbols `© ® ™ ★` and arrows survive). Your
+  own sandboxed `/ui` frame is **exempt** — but the SDK's `validate`/`dev` warn on
+  emoji (`hasEmoji`), so keep it out everywhere. (Source: `text-sanitize.ts`.)
 - **Size every inline SVG explicitly** (footgun, hit repeatedly in real builds):
   an inline `<svg>` without `width`/`height`/CSS sizing falls back to
   replaced-element defaults and — inside a flex/grid tile — **blows up to fill
@@ -408,9 +437,22 @@ Either way, keep the root chrome-free and let the host draw the card.
 
 A `page` plugin is the **opposite**: it renders in a full-page shell with **no**
 host card (`PluginPage.tsx` → a `calc(100vh - nav)` container + a `w-full h-full`
-frame), so you own the whole surface and draw your own layout. Here `trek:resize`
-**does** set the iframe's pixel height (`PluginFrame` applies `Math.min(height,
-2000)`), so you *can* report it on every layout change (e.g. via `ResizeObserver`):
+frame), so you own the whole surface and draw your own layout.
+
+> **≥3.3.0: `page` and `trip-page` frames run in "fill mode" — `trek:resize` is
+> ignored.** 3.3.0 gives both full-page hosts (and the scoped detail frames) a
+> `fill` prop; `PluginFrame` guards resize with `if (!fill && …)`, so for
+> `page` **and** `trip-page` the iframe is locked to **`height:100%` of its
+> container** and reported heights are dropped. Consequence: **own an
+> internal-scroll layout** (a flex child with `overflow:auto`) rather than
+> reporting height — the `ResizeObserver` pattern below and the `trip-page`
+> "cap to viewport" trap are both **no-ops on ≥3.3.0** (and the trip-page
+> clipping trap is resolved host-side by `fill`). Only the **un-filled `sidebar`
+> widget** still uses `trek:resize` for pixel height going forward.
+
+On **≤3.2.1** a `page` frame instead *does* honour `trek:resize` for pixel height
+(`PluginFrame` applies `Math.min(height, 2000)`), so you *can* report it on every
+layout change (e.g. via `ResizeObserver`):
 
 ```js
 var lastH = -1
@@ -421,7 +463,7 @@ function reportHeight(root) {
 if (window.ResizeObserver) new ResizeObserver(() => reportHeight(root)).observe(root)
 ```
 
-> ⚠️ **`trip-page` — do NOT report unbounded content height.** The host mounts a
+> ⚠️ **`trip-page` on ≤3.2.1 — do NOT report unbounded content height.** The host mounts a
 > `trip-page` in a fixed, `position:absolute; overflow:hidden` tab wrapper sized to
 > the planner viewport (`TripPlannerPage.tsx`), and `PluginFrame` sets the iframe to
 > exactly the height you report. Report a height **taller than that viewport and the

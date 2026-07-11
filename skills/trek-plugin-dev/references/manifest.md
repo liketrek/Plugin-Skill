@@ -24,7 +24,10 @@ registry CI, and the TREK install loader all apply the **same** rules
 | `egress` | string[] | conditional | Required non-empty when any `http:outbound` permission is present. No bare `"*"`. Hosts must match the host grammar (below). |
 | `requiredAddons` | string[] | no | Addon ids (`^[a-z][a-z0-9_]{1,39}$`, ≤ 16, e.g. `["budget"]`) that must be enabled in TREK. **Registry metadata:** `validateManifest`/`pack` accept it (unknown keys pass), but the v3.2.1 SDK ignores it and TREK doesn't yet enforce it at activation — its only teeth are the registry's **parity gate**, which requires the entry to carry the **identical** array (the SDK's `entry` won't copy it — add it to the entry by hand). See [publishing.md](publishing.md). |
 | `pluginDependencies` | object[] | no | `{ id, version }[]` (≤ 32) — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` ≤ 100 chars). Same status as `requiredAddons`: passthrough metadata, enforced only by the registry parity gate; mirror it in the entry by hand. |
-| `capabilities.widget` | object | no | `{ "title": string, "slot": "sidebar" \| "hero" \| "place-detail", "defaultSize": … }`. Optional even for widget plugins as far as validation goes; when present, `slot` must be `sidebar` (default), `hero`, or **`place-detail` (≥3.2.1)** — any other value is rejected. A **`place-detail`** widget is a `type:"widget"` that mounts a panel in the trip planner's place inspector (scoped to the selected place, trip mode only) and does **not** appear on the dashboard. **Scaffold gotcha:** `create` writes `{ title, defaultSize: "medium" }` **without `slot`**, so a new widget defaults to `sidebar` — add `"slot": "hero"` yourself if you want the boarding-pass overlay. `defaultSize` is declarative only: the dashboard renders `sidebar` widgets in a **fixed ~180px, `overflow-hidden` slot** regardless, so build compact (see [server-api.md](server-api.md) / client-bridge.md). |
+| `capabilities.widget` | object | no | `{ "title": string, "slot": …, "defaultSize": … }`. Optional even for widget plugins as far as validation goes; when present, `slot` must be `sidebar` (default), `hero`, **`place-detail` (≥3.2.1)**, or **`day-detail` / `reservation-detail` (≥3.3.0)** — any other value is rejected. Scoped slots each mount a chrome-free panel and get an extra id in `trek:context`: `place-detail` → `placeId` (place inspector), **`day-detail` → `dayId`** (foot of the day panel), **`reservation-detail` → `reservationId`** (under each reservation/journey card). None appear on the dashboard. **Scaffold gotcha:** `create` writes `{ title, defaultSize: "medium" }` **without `slot`**, so a new widget defaults to `sidebar` — add `"slot": "hero"` yourself if you want the boarding-pass overlay. `defaultSize` is declarative only: the dashboard renders `sidebar` widgets in a **fixed ~180px, `overflow-hidden` slot** regardless, so build compact (see [server-api.md](server-api.md) / client-bridge.md). |
+| `capabilities.tripPage` **(≥3.3.0)** | object | no | For a `type:"trip-page"` plugin. `replaces: string[]` **hides** core planner tabs while the plugin is active — only these are replaceable: `transports`, `buchungen`, `listen`, `finanzplan`, `dateien`, `collab` (the **`plan` tab can never be replaced**; an unlisted value throws at install). `position: number` sets the plugin tab's preferred 0-based index (integer 0–50; omitted = appended after core tabs). This is the mechanism for a full **tab-takeover** trip-page. |
+| `capabilities.provides` **(≥3.3.0)** | string[] | no | Callable export names this plugin exposes to its **dependents** via `ctx.plugins.call` (safe identifiers, de-duplicated + name-validated at install). The counterpart to `pluginDependencies` (the consuming side). |
+| `capabilities.emits` **(≥3.3.0)** | string[] | no | Event names this plugin publishes to dependents via `ctx.events.emit` (dotted names like `rate.updated` allowed). Drives the host's `subscribersOf` routing. |
 | `settings` | array | no | Settings fields (below). Declared here; **the SDK validator and CI do not validate `settings[]`** — the runtime host renders/enforces them. Plugins write no settings UI. |
 
 **Declarative-only keys the scaffold writes but the installed-manifest parser
@@ -42,21 +45,68 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `db:read:costs` **(≥3.2.1)** | `ctx.costs.getByTrip` / `listMine` (read-only budget items) | "Costs" = budget items. **Route handlers only** (acting user); `getByTrip` is membership-checked, `listMine` aggregates every accessible trip. Also requires the **Costs (budget) addon enabled**, else `RESOURCE_FORBIDDEN` ("the costs addon is disabled"). |
 | `db:read:packing` **(≥3.2.1)** | `ctx.packing.list(tripId)` — a trip's packing items (hydrated bags/assignees) | **Route handlers only** (acting user); membership-checked. Scoped to the acting user's visibility — a plugin **never** sees another member's private (`is_private`) items. Separate scope from `files`. |
 | `db:read:files` **(≥3.2.1)** | `ctx.files.list(tripId)` — a trip's files (trash excluded) | **Route handlers only** (acting user); membership-checked. Separate scope (packing doesn't unlock files). |
+| `db:read:files:content` **(≥3.3.0)** | `ctx.files.getContent(tripId, fileId)` — raw file bytes | **Distinct grant from `db:read:files`** — listing files does *not* let you read their contents. Returns `{name, mimetype, size, content_base64}`; 10 MB cap, trashed files refused. Route handlers only. |
+| `db:read:collab` **(≥3.3.0)** | `ctx.collab.listNotes` / `listPolls` / `listMessages` | Collab addon required. Route handlers only (membership-checked). |
+| `db:read:journal` **(≥3.3.0)** | `ctx.journal.listMine` / `getEntries` | Journey addon required. Acting-user scoped. |
+| `db:read:atlas` **(≥3.3.0)** | `ctx.atlas.visited` / `bucketList` | Atlas addon required. The acting user's own visited/bucket data. |
+| `db:read:vacay` **(≥3.3.0)** | `ctx.vacay.mine` | Vacay addon required. The acting user's own entries. |
+| `db:read:daynotes` **(≥3.3.0)** | `ctx.daynotes.list(tripId, dayId)` | Route handlers only (membership-checked). |
+| `db:read:collections` **(≥3.3.0)** | `ctx.collections.listMine` / `get` | Collections addon required. Acting-user scoped. |
+| `db:read:categories` **(≥3.3.0)** | `ctx.categories.list()` — the global place-category reference | Read-only reference data; no trip scope. |
+| `db:read:tags` **(≥3.3.0)** | `ctx.tags.list()` — the acting user's own tags | Acting-user scoped. |
+| `db:read:todos` **(≥3.3.0)** | `ctx.todos.list(tripId)` | Route handlers only (membership-checked). |
 | `db:write:costs` **(≥3.2.1)** | `ctx.costs.create` / `update` / `delete` (budget items) | **Route handlers only.** Needs the Costs addon enabled **+** trip access **+** the acting user's **`budget_edit`** (else `RESOURCE_FORBIDDEN`). Input zod-validated (→ `BAD_PARAMS`); broadcasts `budget:created/updated/deleted`. |
 | `db:write:places` **(≥3.2.1)** | `ctx.places.create` / `update` / `delete` | **Route handlers only.** Trip access **+** the acting user's **`place_edit`**. Input zod-validated (`name` required → `BAD_PARAMS`) and length-capped like the web app (name ≤ 200, description ≤ 2000, address ≤ 500, notes ≤ 2000 → `BAD_PARAMS`); broadcasts `place:created/updated/deleted`; audited. |
 | `db:write:days` **(≥3.2.1)** | `ctx.days.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`day_edit`**. Broadcasts `day:created/updated/deleted`. |
 | `db:write:itinerary` **(≥3.2.1)** | `ctx.itinerary.assign` / `unassign` (place↔day) | **Route handlers only.** Trip access **+** **`day_edit`**. The day and place must both belong to the trip (cross-trip link → `RESOURCE_FORBIDDEN`). Broadcasts `assignment:created/deleted`. |
 | `db:write:trips` **(≥3.2.1)** | `ctx.trips.update` (edit trip fields) | **Route handlers only.** Trip access **+** **`trip_edit`**. Only schema-writable fields; setting `is_archived` also needs **`trip_archive`**, `cover_image` needs **`trip_cover_upload`**. Broadcasts `trip:updated`. |
-| `db:meta` **(≥3.2.1)** | `ctx.meta.get`/`set`/`list`/`delete` — the plugin's **own** namespaced key/value store on a `trip`/`place`/`day` | **Route handlers only.** Reads need trip access; writes need the entity's edit permission. Per-plugin namespace (you see only your own rows). Quotas: key ≤ 256 chars, value ≤ 64 KB JSON, ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. |
+| `db:create:trips` **(≥3.3.0)** | `ctx.trips.create(input)` | **Route handlers only.** Acting user's **`trip_create`**; `title` required. Creates a new trip owned by the acting user. |
+| `db:write:members` **(≥3.3.0)** | `ctx.trips.addMember` / `removeMember` | **Route handlers only.** Trip access **+** **`member_manage`**. ⚠️ `addMember` **grants a user access to the trip** — treat it as privileged. Can't remove the trip owner. |
+| `db:write:reservations` **(≥3.3.0)** | `ctx.reservations.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`reservation_edit`**. `create`/`update` persist an `endpoints` array (from/to/stop legs): omitted = keep, `[]` = delete all, array = replace. |
+| `db:write:accommodations` **(≥3.3.0)** | `ctx.accommodations.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`day_edit`**. Creating one **auto-creates the partner hotel reservation**, like the app. |
+| `db:write:packing` **(≥3.3.0)** | `ctx.packing.create` / `update` / `delete` **and all bag methods** (`listBags` / `createBag` / `updateBag` / `deleteBag` / `setBagMembers`) | **Route handlers only.** Trip access **+** **`packing_edit`**. ⚠️ **Surprising grouping:** `db:read:packing` only unlocks `packing.list`; **every bag method (incl. `listBags`) needs `db:write:packing`.** `create` shape: `{name, category?, checked?, is_private?, visibility?:'common'\|'personal'\|'shared', recipient_ids?}`. |
+| `db:write:collab` **(≥3.3.0)** | `ctx.collab.createNote` / `createPoll` / `votePoll` / `createMessage` | **Route handlers only.** Collab addon **+** trip access **+** **`collab_edit`**. |
+| `db:write:atlas` **(≥3.3.0)** | `ctx.atlas.markCountry` / `unmarkCountry` / `markRegion` / `unmarkRegion` / `createBucketItem` / `deleteBucketItem` | Atlas addon. Affects the **acting user's own** atlas data. |
+| `db:write:vacay` **(≥3.3.0)** | `ctx.vacay.toggleEntry(date)` / `toggleCompanyHoliday(date, note?)` | Vacay addon. Acting user's own entries. |
+| `db:write:journal` **(≥3.3.0)** | `ctx.journal.createEntry` / `updateEntry` / `deleteEntry` / `createJourney` / `deleteJourney` | Journey addon. Acting-user/contributor gated. |
+| `db:write:collections` **(≥3.3.0)** | `ctx.collections.create` / `update` / `savePlace` / `copyToTrip` / `deletePlace` | Collections addon. Acting-user scoped. |
+| `db:write:daynotes` **(≥3.3.0)** | `ctx.daynotes.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`day_edit`** (daynote writes ride on `day_edit`). |
+| `db:write:tags` **(≥3.3.0)** | `ctx.tags.create` / `update` / `delete` | The acting user's own tags. |
+| `db:write:todos` **(≥3.3.0)** | `ctx.todos.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`packing_edit`** (todo writes ride on `packing_edit`). |
+| `db:meta` **(≥3.2.1)** | `ctx.meta.get`/`set`/`list`/`delete` — the plugin's **own** namespaced key/value store on a `trip`/`place`/`day` — **and (≥3.3.0) `reservation`/`accommodation`** | **Route handlers only.** Reads need trip access; writes need the entity's edit permission. Per-plugin namespace (you see only your own rows). Quotas: key ≤ 256 chars, value ≤ 64 KB JSON, ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. |
 | `ws:broadcast:trip` | `ctx.ws.broadcastToTrip` | **Route handlers only**; acting user must be a trip member. Event `plugin:<id>:<event>` to the **core app's** trip clients — **not** your own iframe. |
 | `ws:broadcast:user` | `ctx.ws.broadcastToUser` | **Route handlers only**; target must equal the acting user (own connections only). Event `{ type: 'plugin:<id>', event }`. There is **no** `ws:broadcast:*`. |
 | `events:subscribe` **(≥3.2.1)** | React to core activity via `events: [{ on, handler }]` on the **definition** (not a route) | **Wired.** Core announces every trip event (e.g. `place:created`, `day:updated`, `file:created`, or `*`) to subscribed, granted, active plugins. Handler gets **only `{ event, tripId }`** (never the payload) and runs with **no user** (like a job → trip reads refused; use `ctx.db`/`ctx.ws`/outbound). Fire-and-forget on a ~5 s timeout — a slow subscriber never blocks a core write. Your own `plugin:*` broadcasts are never re-delivered, so handlers can't loop. |
-| `hook:photo-provider` | Register a `PhotoProvider` | **Still reserved** — validates but the host does **not** consume it. |
-| `hook:calendar-source` | Register a `CalendarSource` | Same — reserved / not consumed. |
+| `hook:photo-provider` | `hooks.photoProvider` | **Reserved / not consumed ≤3.2.1 — WIRED in ≥3.3.0** (`plugin-photos.controller.ts` consumes it). |
+| `hook:calendar-source` | `hooks.calendarSource` | Same: reserved ≤3.2.1, **WIRED in ≥3.3.0** (`plugin-calendar.controller.ts`). `getEvents(userId, start, end)` — `start`/`end` are ISO **strings**. |
 | `hook:place-detail-provider` **(≥3.2.1)** | `hooks.placeDetailProvider.getDetails(placeId, ctx)` → `{ label, value?, url? }[]` | **Wired.** Core calls every active implementer to enrich a place's detail panel (additive, fail-safe). Server-side, no UI of its own. |
 | `hook:trip-warning-provider` **(≥3.2.1)** | `hooks.warningProvider.getWarnings(tripId, ctx)` → `{ level, message, dayId?, placeId? }[]` | **Wired.** TREK surfaces the returned warnings in the trip planner (`level` = `info`/`warning`/`error`). |
+| `hook:table-contributor` **(≥3.3.0)** | `hooks.tableContributor` | **Wired.** Contributes columns/actions to core table views (reservations/places/day/costs/packing/files). Declarative shape, host-sanitized (emoji-stripped), fail-safe. |
+| `hook:map-marker-provider` **(≥3.3.0)** | `hooks.mapMarkerProvider` | **Wired.** Contributes markers to the trip map (labels emoji-stripped). |
+| `hook:pdf-section-provider` **(≥3.3.0)** | `hooks.pdfSectionProvider` | **Wired.** Adds sections to the exported trip PDF. |
+| `hook:atlas-layer-provider` **(≥3.3.0)** | `hooks.atlasLayerProvider` | **Wired.** Adds labelled layers to the atlas. |
+| `hook:journal-entry-provider` **(≥3.3.0)** | `hooks.journalEntryProvider` | **Wired.** Contributes rows to journal entries. |
+| `hook:trip-card-provider` **(≥3.3.0)** | `hooks.tripCardProvider` | **Wired.** Adds badges/content to dashboard trip cards. |
+| `hook:user-data` **(≥3.3.0)** | definition-level `deleteUserData(userId)` / `exportUserData(userId)` | **Wired, GDPR.** Host calls these durably on account erasure/export. **Userless** — you get only a `userId` and act on your **own `db:own`** data; grants **no** core read. Implement it if you store personal data. |
+| `ai:invoke` **(≥3.3.0)** | `ctx.ai.complete` / `ctx.ai.extract` | **Broker.** Host-brokered LLM using the **acting user's** configured provider — the plugin never holds a key. 20 000-char cap; output is **data-only**. |
+| `notify:send` **(≥3.3.0)** | `ctx.notify.send` | **Broker.** Recipient **forced** to the acting user or a trip they're in (admin scope refused); emoji-stripped; `title` ≤ 200 / `body` ≤ 1000; `link` must be an in-app `/…` path. |
+| `oauth:client` **(≥3.3.0)** | `ctx.oauth.getAccessToken()` | **Broker.** Short-lived token for a service the user connected via **Settings → Plugins → Connect**; the plugin never sees the secret. `null` when userless/unconnected. |
+| `rates:read` **(≥3.3.0)** | `ctx.rates.get` | **Broker.** Currency exchange rates. Tenant-free (no acting user needed). |
+| `weather:read` **(≥3.3.0)** | `ctx.weather.get` | **Broker.** Weather by coordinates (host-cached). Tenant-free. |
+| `jobs:run` **(≥3.3.0)** | Declared cron `jobs[]` **and** `ctx.scheduler.set` / `cancel` | **Opt-in gate** for background execution. Covers both node-cron-scheduled declared jobs *and* the persistent `ctx.scheduler`. Callbacks run **userless** (trip reads refused) — see [server-api.md](server-api.md). |
 | `http:outbound` | Marker: plugin does outbound HTTP | Satisfies the "egress required" rule but grants **no host** by itself. |
 | `http:outbound:<host>` | Opens `<host>` in the runtime egress guard **and** the iframe CSP `connect-src` | This is what actually allows a request. |
+
+> **≥3.3.0 roughly triples the permission surface** (~22 → ~50+ grants). Every row
+> tagged **(≥3.3.0)** above landed in TREK 3.3.0; on **≤3.2.1** hosts they are
+> unknown strings and **fail manifest validation**, so declare them only when you
+> target 3.3.0 (or gate a separately-published entry). Two families to note: the **broker
+> permissions** (`ai:invoke` / `notify:send` / `oauth:client` / `rates:read` /
+> `weather:read` / `jobs:run`) are host services, not DB scopes — `rates`/
+> `weather`/`ai` are tenant-free while `notify`/`oauth` are acting-user-scoped;
+> and the **new provider hooks** let an `integration` inject native UI (map
+> markers, PDF sections, atlas layers, journal rows, trip-card badges, table
+> columns) with no iframe of its own.
 
 ### The egress trap (most common runtime bug)
 
@@ -94,7 +144,11 @@ loopback/private/link-local/metadata address (SSRF backstop).
 Resolved **instance-scoped** values arrive in `ctx.config` — decrypted and
 **frozen at activation** (not per-user, not hot-reloaded; a change needs
 deactivate→activate). `scope: user` settings are **not** surfaced to server
-`ctx.config` in 3.2.0.
+`ctx.config` in 3.2.x. **≥3.3.0:** per-user values are now readable via
+**`ctx.settings.get(key)`** — the *acting user's* own decrypted value for a
+`scope:'user'` field; returns `undefined` when unset or in a userless
+(job/`onLoad`) context, where you fall back to `ctx.config`. See
+[server-api.md](server-api.md).
 
 ## Example: minimal widget with network access
 

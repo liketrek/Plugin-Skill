@@ -15,11 +15,11 @@ npx trek-plugin-sdk <command> [args]
 | `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. **≥1.3.0:** also serves a themed host preview at **`/preview`** and expands the `<!-- trek:ui -->` marker on `/ui`. See [testing.md](testing.md). |
 | `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json`, missing `README.md`, or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, or scaffold placeholders remain. Since `pack` validates first, a missing README also fails `pack`. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
 | `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. ⚠️ The printed hash describes **this pack only** — output is **not byte-reproducible** across machines or even SDK patch versions (1.3.0 vs 1.3.1 → different sha256 *and* size from identical LF sources; zip metadata/mtimes). The registry `sha256`/`size` must come from the **uploaded release asset**, never a re-pack (see [publishing.md](publishing.md)). |
-| `entry [dir] --repo <owner/name> --tag <vX.Y.Z> [--dir d] [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>] [--sign [key]]` | git + network | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, `minTrekVersion`. `--merge` prepends the new version (newest-first) and refuses a key switch / unsigned update to a signed plugin. ⚠️ **Run it only after the GitHub release with `plugin.zip` attached exists** — it verifies the release asset and fails with `artifact not found` otherwise (observed SDK 1.3.x). Order: pack → release (asset attached) → `entry`. |
+| `entry [dir] --repo <owner/name> --tag <vX.Y.Z> [--dir d] [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>] [--sign [key]]` | git + network | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, `minTrekVersion`. `--merge` prepends the new version (newest-first) and refuses a key switch / unsigned update to a signed plugin. ⚠️ **Run it only after the GitHub release with `plugin.zip` attached exists** — it verifies the release asset and fails with `artifact not found` otherwise. Order: pack → release (asset attached) → `entry`. |
 | `release [dir] --repo <o/n> --tag <vX.Y.Z> [--out] [--notes] [--commit] [--merge] [--sign [key]]` | git + `gh` (authed) | One shot: `pack` → `gh release create` (uploads the zip) → prints the entry. |
-| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity, artifact sha256 + size, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI **— except for `trip-page` on SDK ≤ 1.3.x:** ⚠️ **SDK ≤ 1.3.x `preflight` has a bug** (`preflight.ts:50` hardcodes `['integration','page','widget']`) and **fails every `trip-page` plugin** with `type "trip-page" is not integration\|page\|widget` — even though the SDK's own manifest validator (`TYPES`) and the live registry schema both accept `trip-page`, so the real registry CI passes; only the local preflight is wrong. **Fixed in SDK 1.4.0** (`preflight.ts:50` now includes `'trip-page'`) — on ≥1.4.0 `preflight`/`publish` handle a `trip-page` normally and the workarounds below are unnecessary. |
-| `submit --repo <o/n> --tag <vX.Y.Z> [--branch <name>] [--keep] [--draft] [--registry <owner/name>] [--zip] [--commit] [--sign [key]]` | `gh` (authed) | Forks TREK-Plugins (once), branches (`plugin-<id>-<version>` unless `--branch`), writes/merges the entry, pushes, opens the PR. `--keep` keeps the temp clone dir. **`submit` does NOT run preflight**, so it's the clean path for a `trip-page` **on SDK ≤ 1.3.x** (whose local preflight is broken; unnecessary on ≥1.4.0). |
-| `publish --repo <o/n> --tag <vX.Y.Z> [--sign [key]] [--no-preflight] [--draft] [--registry <owner/name>] [--notes <text>]` | git + `gh` (authed) | **One-command release:** pack → tag + GitHub release → preflight → registry PR. Stops before submitting if preflight fails — **`--no-preflight` skips that safety gate** (don't, in general). **`trip-page` on SDK ≤ 1.3.x only:** `publish` fails at preflight *after* already cutting the GitHub release (release is step 2, preflight step 3) — so use **`publish --no-preflight`** (or `release` then `submit`), or the release exists but no PR opens. **On SDK ≥ 1.4.0 this is fixed** — plain `publish` works for `trip-page`. |
+| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity, artifact sha256 + size, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI. (Historical: **SDK ≤ 1.3.x `preflight` had a bug** — `preflight.ts:50` hardcoded `['integration','page','widget']` and **failed every `trip-page` plugin** even though registry CI passed. **Fixed in SDK 1.4.0**; irrelevant on the current SDK.) |
+| `submit --repo <o/n> --tag <vX.Y.Z> [--branch <name>] [--keep] [--draft] [--registry <owner/name>] [--zip] [--commit] [--sign [key]]` | `gh` (authed) | Forks TREK-Plugins (once), branches (`plugin-<id>-<version>` unless `--branch`), writes/merges the entry, pushes, opens the PR. `--keep` keeps the temp clone dir. **`submit` does NOT run preflight** (a clean path if you ever need to skip it). |
+| `publish --repo <o/n> --tag <vX.Y.Z> [--sign [key]] [--no-preflight] [--draft] [--registry <owner/name>] [--notes <text>]` | git + `gh` (authed) | **One-command release:** pack → tag + GitHub release → preflight → registry PR. Stops before submitting if preflight fails — **`--no-preflight` skips that safety gate** (don't, in general). Works for every type incl. `trip-page` on the current SDK. |
 | `keygen [--key <file>]` | — | Creates a dependency-free Ed25519 signing key (default `~/.trek-plugin/signing.key`; back it up!). |
 | `sign [zip] [--key <file>]` | key | **Prints** `signature` + `authorPublicKey` for an artifact (default `plugin.zip`) — does **not** modify any entry. |
 
@@ -105,3 +105,34 @@ Failure behavior worth knowing: the git tag must **equal** the manifest
 `--commit <sha>`), else it fails with `could not resolve the commit for tag
 "vX.Y.Z" (is it pushed?)`; `preflight`/CI fail on any gate in
 [publishing.md](publishing.md#ci-gates).
+
+## Dev-link — run your local build inside a real instance (≥3.3.0, DEV-ONLY)
+
+`trek-plugin dev` only **mocks** the host (see [testing.md](testing.md)). ≥3.3.0
+adds a first-class **dev-link** path that runs your *same local build* inside a
+**real running TREK instance against real trip data** — the fidelity `dev` can't
+give you. It is strictly a development tool, **gated behind an env flag and off
+by default; never enable it in production** (it bypasses the signing/integrity
+model, and under `npm run dev` runs with the OS permission jail **off** — though
+DATA access stays fully capability-gated).
+
+Steps:
+
+1. **Build** the plugin so a real **`server/index.js`** exists — the loader runs
+   the compiled artifact, **not** TS (`no built server/index.js` otherwise).
+2. Start TREK with **`TREK_PLUGINS_DEV_LINK=1`** (accepts only exactly `1`).
+3. **Admin → Plugins** shows a "link" form — paste the **absolute** path to the
+   built plugin dir (or `POST /api/admin/plugins/link { path }`). The host
+   validates the manifest, refuses native binaries (same guards as sideload), and
+   **symlinks** `<plugins>/<id>` → your source (Windows junction, no elevation).
+4. It registers **INACTIVE**, flagged **Dev-linked** (`source_repo='local:link'`,
+   unsigned, sha256/pubkey nulled, **no auto-update**) — then **activate + consent**.
+5. **Rebuild** → an `fs.watch` on `server/` **auto re-forks**; or hit **Reload** /
+   `POST /api/admin/plugins/:id/reload` on demand.
+
+Gotchas: the path must be **absolute** and point at **built JS** (not TS); you
+**can't dev-link an id already installed** from registry/sideload (uninstall
+first); a rebuilt manifest that **widens permissions forces re-consent** on
+reload; and discovery only follows the symlink **while dev-link mode is on**, so a
+stale link is ignored on a normal boot. The admin UI only renders the link form
+when the server reports `devLink:true` (`GET /api/admin/plugins`).

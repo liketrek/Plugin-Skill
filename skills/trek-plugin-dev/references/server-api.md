@@ -44,16 +44,20 @@ The routes and job ids on the **loaded definition are authoritative** (a
 route's array index is its internal id); the `routes` block in the manifest is
 never consumed.
 
-> ⚠️ **`jobs[]` are not scheduled in TREK 3.2.0 / 3.2.1.** The child *can* handle
-> an `invoke.job`, but **nothing in the server ever sends one** — there is no
-> cron runner wiring plugin jobs (`plugins.module.ts`, `scheduler.ts` schedule
-> only core tasks; the sole `invoke.job` reference is the child handler in
-> `runtime/plugin-host-entry.ts`). A declared `schedule` is parsed and reported
-> but the handler **never fires**. Do **not** rely on `jobs` for periodic work:
-> drive it from a route your own client polls, or an external trigger hitting an
-> `auth:false` route. (The Plugin Cookbook's "Where things run" table lists
-> `jobs` as running "on a schedule" — that row is aspirational; no scheduler
-> wiring exists in 3.2.0/3.2.1, verified above.)
+> ⚠️ **`jobs[]` scheduling depends on the TREK version.**
+>
+> - **≤ 3.2.1 — NOT scheduled.** No cron runner wires plugin jobs; a declared
+>   `schedule` is parsed and reported but the handler **never fires**. Drive
+>   periodic work from a route your own client polls, or an external trigger
+>   hitting an `auth:false` route.
+> - **≥ 3.3.0 — scheduled via node-cron, opt-in.** A real host-side runner
+>   (`plugin-jobs.ts` `scheduleJobs()`) wires each declared job's cron to
+>   node-cron and fires `invoke.job` on the tick — **gated by the new `jobs:run`
+>   grant** (without it, jobs still don't run; an invalid cron is skipped). Jobs
+>   run **userless** (own-`db`/egress/brokers only; trip reads → `RESOURCE_FORBIDDEN`).
+>   ≥3.3.0 also adds a **persistent `ctx.scheduler`** (`at`/`in`/`every`/`cancel`,
+>   also under `jobs:run`) that fires a `scheduled({name, payload}, ctx)` handler
+>   and **survives restarts** — see the scheduler row in the semantics table.
 
 ## Type surface (from `trek-plugin-sdk`)
 
@@ -66,18 +70,33 @@ export interface PluginDefinition {
   routes?: PluginRoute[];
   jobs?: PluginJob[];               // declared but not scheduled (see above)
   events?: PluginEventSubscription[]; // (≥3.2.1) WIRED reactive hook — needs events:subscribe
-  hooks?: {                                    // ≥3.2.1: placeDetail + warning are WIRED
-    photoProvider?: PhotoProvider;             // reserved — not consumed
-    calendarSource?: CalendarSource;           // reserved — not consumed
+  scheduled?(input: { name: string; payload?: unknown }, ctx): Promise<void> | void; // (≥3.3.0) ctx.scheduler callbacks (jobs:run)
+  deleteUserData?(userId: number, ctx): Promise<void> | void; // (≥3.3.0) hook:user-data — GDPR erasure, userless
+  exportUserData?(userId: number, ctx): Promise<unknown>;     // (≥3.3.0) hook:user-data — GDPR export, userless
+  exports?: Record<string, (args, ctx) => unknown>;  // (≥3.3.0) capabilities.provides targets — called by dependents
+  subscriptions?: { plugin: string; event: string; handler(payload, ctx): void }[]; // (≥3.3.0) consume a dependency's emits
+  hooks?: {                                    // ≥3.2.1: placeDetail + warning WIRED; ≥3.3.0: all below WIRED
+    photoProvider?: PhotoProvider;             // reserved ≤3.2.1 — WIRED ≥3.3.0
+    calendarSource?: CalendarSource;           // reserved ≤3.2.1 — WIRED ≥3.3.0 (getEvents(userId, startISO, endISO))
     placeDetailProvider?: PlaceDetailProvider; // (≥3.2.1) getDetails(placeId, ctx) → {label,value?,url?}[]
     warningProvider?: WarningProvider;         // (≥3.2.1) getWarnings(tripId, ctx) → {level,message,dayId?,placeId?}[]
+    tableContributor?: TableContributor;       // (≥3.3.0) hook:table-contributor — columns/actions on core table views
+    mapMarkerProvider?: MapMarkerProvider;     // (≥3.3.0) hook:map-marker-provider
+    pdfSectionProvider?: PdfSectionProvider;   // (≥3.3.0) hook:pdf-section-provider
+    atlasLayerProvider?: AtlasLayerProvider;   // (≥3.3.0) hook:atlas-layer-provider
+    journalEntryProvider?: JournalEntryProvider; // (≥3.3.0) hook:journal-entry-provider
+    tripCardProvider?: TripCardProvider;       // (≥3.3.0) hook:trip-card-provider
   };
 }
 
 // (≥3.2.1) core-event subscription — see "Event subscriptions" below
 export interface PluginEventSubscription {
   on: string;   // 'place:created' | 'day:updated' | 'file:created' | … | '*'
-  handler(payload: { event: string; tripId: number }, ctx: PluginContext): Promise<void> | void;
+  // (≥3.3.0) payload also carries entity/entityId/snapshot — snapshot only when
+  // the plugin ALSO holds the family's db:read:* grant (else absent). Still no user.
+  handler(payload: { event: string; tripId: number;
+                     entity?: string; entityId?: number; snapshot?: Record<string, unknown> },
+          ctx: PluginContext): Promise<void> | void;
 }
 
 export interface PluginRoute {
@@ -91,6 +110,9 @@ export interface PluginRequest {
   method: string; path: string;
   query: Record<string, unknown>; body: unknown;
   user: { id: number; username: string; isAdmin: boolean } | null;
+  headers?: Record<string, string>; // (≥3.3.0) auth:false routes ONLY — a credential-free
+                                     // allowlist (provider signature/event headers; never
+                                     // Cookie/Authorization). Empty on authenticated routes.
 }
 export interface PluginResponse { status: number; headers?: Record<string, string>; body?: unknown; }
 
@@ -101,7 +123,9 @@ export interface PluginContext {
     query<T = unknown>(sql: string, ...args: unknown[]): Promise<T[]>;
     exec(sql: string, ...args: unknown[]): Promise<{ changes: number }>;
     migrate(id: string, sql: string): Promise<{ applied: boolean }>;
+    tx(ops: { sql: string; args?: unknown[] }[]): Promise<({ rows: unknown[] } | { changes: number })[]>; // (≥3.3.0) atomic batch on your OWN db, ≤100 ops
   };
+  settings: { get(key: string): Promise<unknown> };   // (≥3.3.0) acting user's own scope:'user' value; undefined if unset/userless
   // (≥3.2.1) reads return typed entities (Trip/Place/Day/Reservation/PackingItem/
   // TripFile/BudgetItem/Assignment/User) — but only `id` is guaranteed; every shape
   // keeps an index signature and mirrors the raw DB row, so treat other fields as
@@ -109,9 +133,42 @@ export interface PluginContext {
   trips: {
     getById(tripId, asUserId?): Promise<Trip | null>; getPlaces(...): Promise<Place[]>; getReservations(...): Promise<Reservation[]>;
     update(tripId: number, input: Record<string, unknown>): Promise<Trip>;      // (≥3.2.1)
+    getDays(tripId): Promise<Day[]>; getAccommodations(tripId): Promise<unknown[]>; // (≥3.3.0)
+    listMine(): Promise<Trip[]>;                          // (≥3.3.0) all accessible trips
+    members(tripId): Promise<unknown[]>;                  // (≥3.3.0) db:read:trips — roster
+    addMember(tripId, userId): Promise<{ joined: boolean }>;   // (≥3.3.0) db:write:members + member_manage — GRANTS ACCESS
+    removeMember(tripId, userId): Promise<{ removed: boolean }>; // (≥3.3.0) can't remove owner
+    create(input: Record<string, unknown>): Promise<Trip>;    // (≥3.3.0) db:create:trips + trip_create; title required
   };
-  packing: { list(tripId: number): Promise<PackingItem[]> };  // (≥3.2.1) db:read:packing
-  files:   { list(tripId: number): Promise<TripFile[]> };     // (≥3.2.1) db:read:files
+  // (≥3.3.0) full booking writes
+  reservations: {
+    listMine(): Promise<unknown[]>;                      // db:read:trips
+    create(tripId, input); update(tripId, id, input); delete(tripId, id): Promise<{ deleted: boolean }>; // db:write:reservations + reservation_edit
+    // create/update persist `endpoints` (from/to/stop legs): omit=keep, []=delete all, array=replace
+  };
+  accommodations: { create(tripId, input); update(tripId, id, input); delete(tripId, id): Promise<{ deleted: boolean }> }; // (≥3.3.0) db:write:accommodations + day_edit; create auto-adds partner reservation
+  packing: {
+    list(tripId: number): Promise<PackingItem[]>;         // (≥3.2.1) db:read:packing
+    create(tripId, input); update(tripId, id, input); delete(tripId, id): Promise<{ deleted: boolean }>; // (≥3.3.0) db:write:packing + packing_edit
+    listBags(tripId); createBag(tripId, input); updateBag(tripId, id, input); deleteBag(tripId, id); setBagMembers(tripId, id, memberIds); // (≥3.3.0) ALL under db:write:packing
+  };
+  files: {
+    list(tripId: number): Promise<TripFile[]>;            // (≥3.2.1) db:read:files
+    getContent(tripId, fileId): Promise<{ name; mimetype; size; content_base64 }>; // (≥3.3.0) db:read:files:content — 10MB cap, trashed refused
+    create(tripId, input); createLink(tripId, input); update(tripId, id, input); softDelete(tripId, id); // (≥3.3.0) db:write:files + file_upload/file_edit/file_delete
+  };
+  daynotes:    { list(tripId, dayId); create(tripId, dayId, input); update(tripId, id, input); delete(tripId, id) }; // (≥3.3.0) db:read/write:daynotes (+ day_edit for writes)
+  todos:       { list(tripId); create(tripId, input); update(tripId, id, input); delete(tripId, id) };   // (≥3.3.0) db:read/write:todos (+ packing_edit for writes)
+  tags:        { list(); create(input); update(id, input); delete(id) };  // (≥3.3.0) db:read/write:tags — the acting user's own tags
+  categories:  { list(): Promise<unknown[]> };            // (≥3.3.0) db:read:categories — global place-category reference
+  collab:      { listNotes(tripId); listPolls(tripId); listMessages(tripId, before?);         // (≥3.3.0) db:read:collab
+                 createNote(tripId, input); createPoll(tripId, input); votePoll(tripId, id, opt); createMessage(tripId, input) }; // db:write:collab + collab_edit; Collab addon
+  journal:     { listMine(); getEntries(journeyId);                                            // (≥3.3.0) db:read:journal
+                 createEntry(journeyId, input); updateEntry(id, input); deleteEntry(id); createJourney(input); deleteJourney(id) }; // db:write:journal; Journey addon
+  atlas:       { visited(); bucketList();                                                       // (≥3.3.0) db:read:atlas
+                 markCountry(code); unmarkCountry(code); markRegion(id); unmarkRegion(id); createBucketItem(input); deleteBucketItem(id) }; // db:write:atlas; acting user's own
+  vacay:       { mine(); toggleEntry(date); toggleCompanyHoliday(date, note?) };  // (≥3.3.0) db:read/write:vacay; Vacay addon
+  collections: { listMine(); get(id); create(input); update(id, input); savePlace(id, place); copyToTrip(id, tripId); deletePlace(id, placeId) }; // (≥3.3.0) db:read/write:collections; Collections addon
   costs: {                                               // (≥3.2.1) budget items
     getByTrip(tripId: number): Promise<unknown[]>;
     listMine(): Promise<unknown[]>;
@@ -126,7 +183,8 @@ export interface PluginContext {
   // days.create takes { date?, notes?, position? } — a `title` is DROPPED here; set it via days.update.
   itinerary: { assign(tripId, dayId, placeId, notes?); unassign(tripId, assignmentId): Promise<{ deleted: boolean }> };
   meta: {                                                // (≥3.2.1) plugin-private KV on core entities
-    get(entityType: 'trip' | 'place' | 'day', entityId: number, key: string): Promise<unknown>;
+    // (≥3.3.0) entityType widened to also include 'reservation' | 'accommodation'
+    get(entityType: 'trip' | 'place' | 'day' | 'reservation' | 'accommodation', entityId: number, key: string): Promise<unknown>;
     set(entityType, entityId, key, value): Promise<{ key: string; value: unknown }>;
     list(entityType, entityId): Promise<Record<string, unknown>>;
     delete(entityType, entityId, key): Promise<{ deleted: boolean }>;
@@ -136,6 +194,19 @@ export interface PluginContext {
     broadcastToTrip(tripId: number, event: string, data): Promise<void>;
     broadcastToUser(userId: number, event: string, data): Promise<void>;
   };
+  // (≥3.3.0) host-mediated brokers — tenant-free services, not DB namespaces
+  notify: { send(input: { title; body; link?; scope: 'user' | 'trip'; targetId }): Promise<void> }; // notify:send — recipient forced to acting user/their trip
+  ai:     { complete(prompt, system?): Promise<{ text: string }>;                                     // ai:invoke — acting user's provider, no key held
+            extract(text, jsonSchema, prompt?): Promise<{ results: unknown }> };                      // 20000-char cap, output is DATA-only
+  oauth:  { getAccessToken(): Promise<string | null> };  // oauth:client — user-connected service; null when userless/unconnected
+  rates:  { get(...): Promise<unknown> };                 // rates:read — currency rates (tenant-free)
+  weather:{ get(...): Promise<unknown> };                 // weather:read — by coords, host-cached (tenant-free)
+  scheduler: {                                            // (≥3.3.0) jobs:run — persistent, userless, restart-surviving
+    at(name, whenISO, payload?); in(name, seconds, payload?); every(name, seconds, payload?); cancel(name);
+    // caps: ≤100 tasks, name ≤128 chars, payload ≤8 KB, interval ≥60s, ≤1yr out → scheduled({name,payload}, ctx)
+  };
+  plugins: { call(pluginId: string, fn: string, args): Promise<unknown> }; // (≥3.3.0) call a dependency's capabilities.provides export (runs as current user)
+  events:  { emit(name: string, payload): Promise<void> }; // (≥3.3.0) publish to dependents; name must be in capabilities.emits
   log: { info(msg, meta?): void; warn(msg, meta?): void; error(msg, meta?): void };
 }
 ```
@@ -153,18 +224,28 @@ export interface PluginContext {
 | `ctx.costs.create` / `update(tripId, itemId, input)` / `delete(tripId, itemId)` **(≥3.2.1)** | **Route handlers only.** Create/edit/remove budget items (frozen FX + members/payers); **broadcasts `budget:created/updated/deleted`**. Requires the Costs addon **+** trip access **+** the acting user's **`budget_edit`**; input zod-validated (→ `BAD_PARAMS`). **The amount field is `total_price` (a number), NOT `amount`** — accepted keys: `name` (required), `total_price`, `currency`, `category`, `exchange_rate`, `payers`, `member_ids`, `note`, `expense_date`, … (`budgetCreateItemRequestSchema`). ⚠️ **zod strips unknown keys silently**, so `{ name, amount: 5000 }` **succeeds but saves the item at 0** (no error, shows "¥ 0") — pass `total_price`. | `db:write:costs` |
 | `ctx.trips.update(tripId, input)` **(≥3.2.1)** | **Route handlers only.** Edit trip fields (`title`/`start_date`/`end_date`/`currency`/`reminder_days`/…). Trip access **+** the acting user's **`trip_edit`**; setting `is_archived` also needs **`trip_archive`**, `cover_image` needs **`trip_cover_upload`**. zod-validated (→ `BAD_PARAMS`); broadcasts `trip:updated`. | `db:write:trips` |
 | `ctx.places.*` / `ctx.days.*` / `ctx.itinerary.*` **(≥3.2.1)** | **Route handlers only.** Create/update/delete planner places & days; assign/unassign places to days. Trip access **+** the matching edit permission (`place_edit` / `day_edit` / `day_edit`); the day & place must belong to the trip. zod-validated (→ `BAD_PARAMS`); each broadcasts the app's real event (`place:*` / `day:*` / `assignment:*`) and is audited. | `db:write:places` / `db:write:days` / `db:write:itinerary` |
-| `ctx.meta.*` **(≥3.2.1)** | **Route handlers only.** The plugin's **own** namespaced KV store on a `trip`/`place`/`day` (`get`/`set`/`list`/`delete`). Reads need trip access; writes need the entity's edit permission. Per-plugin namespace; quotas key ≤ 256 chars / value ≤ 64 KB JSON / ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. ⚠️ **Can be `undefined` on real hosts too** — never hard-depend; see the optional-namespaces note below. | `db:meta` |
+| `ctx.meta.*` **(≥3.2.1)** | **Route handlers only.** The plugin's **own** namespaced KV store on a `trip`/`place`/`day` — **and (≥3.3.0) `reservation`/`accommodation`** (`get`/`set`/`list`/`delete`). Reads need trip access; writes need the entity's edit permission. Per-plugin namespace; quotas key ≤ 256 chars / value ≤ 64 KB JSON / ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. ⚠️ **Can be `undefined` on real hosts too** — never hard-depend; see the optional-namespaces note below. | `db:meta` |
+| `ctx.db.tx(ops)` **(≥3.3.0)** | Run **≤ 100** statements atomically on your **own** db (all commit or roll back). Each op `{sql, args?}`; reads see the batch's earlier writes; a read op returns `{rows}`, a write `{changes}`. Same refused-SQL/length caps as `ctx.db`. | `db:own` |
+| `ctx.settings.get(key)` **(≥3.3.0)** | The **acting user's own** decrypted value for a `scope:'user'` field. `undefined` for unset or a **userless** (`onLoad`/job/scheduler) context — fall back to `ctx.config`. Wired unconditionally (no grant). | — |
+| `ctx.reservations.*` / `ctx.accommodations.*` **(≥3.3.0)** | **Route handlers only.** `reservations.listMine()` (read, `db:read:trips`); create/update/delete need `reservation_edit` and persist `endpoints` (omit=keep, `[]`=delete all, array=replace). `accommodations.*` need `day_edit`; creating one **auto-creates the partner hotel reservation**. | `db:write:reservations` / `db:write:accommodations` |
+| `ctx.files.getContent` / writes **(≥3.3.0)** | **Route handlers only.** `getContent(tripId, fileId)` → `{name, mimetype, size, content_base64}` (10 MB cap, trashed refused) needs the **distinct** `db:read:files:content` (listing ≠ reading bytes). `create`/`createLink`/`update`/`softDelete` need `db:write:files` **+** `file_upload`/`file_edit`/`file_delete`; blocked extensions refused. | `db:read:files:content` / `db:write:files` |
+| `ctx.packing` writes + bags **(≥3.3.0)** | **Route handlers only.** `create`/`update`/`delete` and **all bag methods** (`listBags`/`createBag`/`updateBag`/`deleteBag`/`setBagMembers`) need `packing_edit`. ⚠️ **`db:read:packing` unlocks only `list`; every bag method — incl. `listBags` — needs `db:write:packing`.** `create` shape: `{name, category?, checked?, is_private?, visibility?, recipient_ids?}`. | `db:write:packing` |
+| `ctx.trips` roster + lifecycle **(≥3.3.0)** | **Route handlers only.** `getDays`/`getAccommodations`/`listMine`/`members` are reads (`db:read:trips`). `addMember`/`removeMember` need `db:write:members` **+** `member_manage` — ⚠️ **`addMember` grants trip access**, and the owner can't be removed. `create(input)` needs `db:create:trips` **+** `trip_create` (title required). | `db:read:trips` / `db:write:members` / `db:create:trips` |
+| **Personal-data & addon subsystems** `ctx.collab` / `journal` / `atlas` / `vacay` / `collections` / `daynotes` / `todos` / `tags` / `categories` **(≥3.3.0)** | **Route handlers only** (userless → `RESOURCE_FORBIDDEN`). Each has a `db:read:<x>` for its reads and a `db:write:<x>` for its writes; `collab`/`journal`/`atlas`/`vacay`/`collections` also require their **addon enabled** (else `RESOURCE_FORBIDDEN`). Scoping: `atlas`/`vacay`/`tags`/`collections`/`journal` act on the **acting user's own** data; `daynotes` writes ride on `day_edit`, `todos` writes on `packing_edit`, `collab` writes on `collab_edit`; `categories.list()` is global reference data. See the manifest catalog for the exact method→scope map. | `db:read:<x>` / `db:write:<x>` |
+| **Host brokers** `ctx.notify` / `ai` / `oauth` / `rates` / `weather` **(≥3.3.0)** | Host-mediated services, **not** DB namespaces — detailed in "Host-mediated brokers" below. `notify.send` and `oauth.getAccessToken` are acting-user-scoped (route-only); `ai`/`rates`/`weather` are tenant-free (work userless too). | `notify:send` / `ai:invoke` / `oauth:client` / `rates:read` / `weather:read` |
+| `ctx.scheduler.*` **(≥3.3.0)** | Persistent, **userless**, restart-surviving timers (`at`/`in`/`every`/`cancel`) firing the `scheduled({name, payload}, ctx)` handler. Caps: ≤ 100 tasks, name ≤ 128 chars, payload ≤ 8 KB, interval ≥ 60 s, ≤ 1 yr out. Same grant as declared cron jobs. | `jobs:run` |
+| `ctx.plugins.call` / `ctx.events.emit` **(≥3.3.0)** | Inter-plugin: `plugins.call(pluginId, fn, args)` invokes a **dependency's** `capabilities.provides` export (runs as the current user); `events.emit(name, payload)` publishes to dependents that subscribed (`name` must be in `capabilities.emits`). Authorized via declared dependency edges. | — (declared deps) |
 | `ctx.ws.broadcastToTrip` | **Route handlers only.** The acting user must be a member of the target trip. Event to the **core TREK app's** trip-room clients as `plugin:<id>:<event>`. | `ws:broadcast:trip` |
 | `ctx.ws.broadcastToUser` | **Route handlers only.** Target **must equal the acting user** (`userId === req.user.id`) — you can only push to the acting user's **own** connections. Event to core clients as `{ type: 'plugin:<id>', event, ...data }`. | `ws:broadcast:user` |
-| `ctx.config` | **Instance-scoped** settings, decrypted and **frozen at activation** (`secret:true` arrive decrypted, server-side only). Not per-user; not hot-reloaded — change requires deactivate→activate. `scope:user` settings are **not** surfaced here in 3.2.0. | — |
+| `ctx.config` | **Instance-scoped** settings, decrypted and **frozen at activation** (`secret:true` arrive decrypted, server-side only). Not per-user; not hot-reloaded — change requires deactivate→activate. `scope:user` settings are **not** surfaced here in 3.2.x; **≥3.3.0 read them via `ctx.settings.get(key)`** (row above). | — |
 | `ctx.log` | `info`/`warn`/`error` → the plugin's error log in Admin → Plugins. | — |
 | `ctx.id` | Your plugin id (also in `process.env.TREK_PLUGIN_ID`). | — |
 
 > **Treat every ≥3.2.1 namespace as optional — even on a real host.** The
 > optional namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`,
-> `packing`, `files`, `trips.update`) are not just `undefined` under
-> `trek-plugin dev` (SDK 1.3.0, see [testing.md](testing.md)) — they have been
-> observed **partly `undefined` on real production hosts** as well: a live
+> `packing`, `files`, `trips.update`) have been observed **partly `undefined` on
+> real production hosts** (independent of the dev server, which has full parity on
+> the current SDK — see [testing.md](testing.md)): a live
 > route using `ctx.meta.set(…)` crashed with `Cannot read properties of
 > undefined (reading 'set')`. So never build a feature that *hard-requires*
 > them. The robust pattern:
@@ -194,7 +275,28 @@ export interface PluginContext {
 > route via `trek:invoke`**. `ws:broadcast:*` is only useful to drive parts of
 > TREK that explicitly consume the event.
 
-## Provider hooks (≥3.2.1)
+## Host-mediated brokers (≥3.3.0)
+
+Five tenant-free host services, distinct from the DB namespaces — the plugin
+never holds a key/secret; the host brokers the call:
+
+- **`ctx.notify.send({ title, body, link?, scope: 'user'|'trip', targetId })`**
+  (`notify:send`) — the recipient is **forced** to the acting user or a trip they
+  belong to (admin scope refused); `title` emoji-stripped and ≤ 200, `body`
+  ≤ 1000, `link` must be an in-app `/…` path. **Route-only** (needs the acting
+  user).
+- **`ctx.ai.complete(prompt, system?)` → `{ text }`** and
+  **`ctx.ai.extract(text, jsonSchema, prompt?)` → `{ results }`** (`ai:invoke`) —
+  uses the **acting user's** configured provider; 20 000-char cap; the output is
+  **data only** (treat it as untrusted text, never as instructions).
+- **`ctx.oauth.getAccessToken()` → `string | null`** (`oauth:client`) — a
+  short-lived token for a service the user connected via **Settings → Plugins →
+  Connect**; `null` when userless or not connected. Route-only in practice.
+- **`ctx.rates.get(…)`** (`rates:read`) and **`ctx.weather.get(…)`**
+  (`weather:read`) — currency rates / weather-by-coords, host-cached and
+  **tenant-free**, so they work from jobs/scheduler too.
+
+## Provider hooks (≥3.2.1, expanded ≥3.3.0)
 
 Besides `routes`, a plugin (typically an `integration`) can contribute to core
 TREK via **wired** `hooks` on the definition — each gated by a `hook:*`
@@ -208,17 +310,37 @@ permission and called with the plugin `ctx`:
   `getWarnings(tripId, ctx): Promise<{ level: 'info'|'warning'|'error'; message: string; dayId?: number; placeId?: number }[]>`.
   TREK surfaces the returned warnings in the trip planner.
 
-The `hook:*` grant is **enforced at dispatch** (v3-2-1): core only wires a
-provider that is active, implements the hook in code, **and** holds the matching
-`hook:*` permission. Declaring `getDetails`/`getWarnings` without the grant means
-your hook is silently never called — so if a provider "never fires", check the
-manifest `permissions` first.
+**≥3.3.0 wires six more declarative contribution hooks** (each `hook:*`-gated,
+its own consuming controller, host-sanitized — emoji stripped from any text — and
+fail-safe on throw/timeout), so an `integration` can inject **native** UI with no
+iframe of its own:
 
-`photoProvider` / `calendarSource` still validate but are **not** consumed
-(`CalendarSource.getEvents(userId, start, end)` now takes `start`/`end` as ISO
-**strings**, not `Date` — the host↔plugin boundary is JSON). Hooks feed **core
-UI** without your own iframe; the `place-detail` **widget slot** is the other
-route (your own sandboxed panel — see [client-bridge.md](client-bridge.md)).
+- **`tableContributor`** (`hook:table-contributor`) — columns/actions on core
+  table views (reservations/places/day/costs/packing/files).
+- **`mapMarkerProvider`** (`hook:map-marker-provider`) — markers on the trip map.
+- **`pdfSectionProvider`** (`hook:pdf-section-provider`) — sections in the exported PDF.
+- **`atlasLayerProvider`** (`hook:atlas-layer-provider`) — labelled atlas layers.
+- **`journalEntryProvider`** (`hook:journal-entry-provider`) — rows in journal entries.
+- **`tripCardProvider`** (`hook:trip-card-provider`) — badges/content on dashboard trip cards.
+
+And **≥3.3.0 promotes `photoProvider` / `calendarSource` from reserved to WIRED**
+(`plugin-photos.controller.ts` / `plugin-calendar.controller.ts` consume them;
+`CalendarSource.getEvents(userId, start, end)` takes `start`/`end` as ISO
+**strings**). On ≤3.2.1 both still merely validate and are not consumed.
+
+Also **≥3.3.0** adds a **data-rights hook** `hook:user-data`: define
+`deleteUserData(userId, ctx)` / `exportUserData(userId, ctx)` and the host calls
+them **durably** on account erasure/export. They run **userless** — you get only
+a `userId` and act on your **own `db:own`** data; the hook grants no core read.
+Implement it if your plugin stores personal data (GDPR erasure/portability).
+
+The `hook:*` grant is **enforced at dispatch**: core only wires a provider that is
+active, implements the hook in code, **and** holds the matching `hook:*`
+permission. If a provider "never fires", check the manifest `permissions` first.
+
+Hooks feed **core UI** without your own iframe; the scoped **widget slots**
+(`place-detail`/`day-detail`/`reservation-detail`) are the other route (your own
+sandboxed panel — see [client-bridge.md](client-bridge.md)).
 
 ## Event subscriptions (≥3.2.1)
 
@@ -240,15 +362,39 @@ module.exports = definePlugin({
 
 - **`on`** is a core event name (`place:created`, `place:updated`, `day:updated`,
   `file:created`, `assignment:created`, `budget:updated`, …) or `'*'` for all.
-- The handler receives **only `{ event, tripId }`** — *never the payload* — and runs
-  with **no user** (like a job): `ctx.trips`/`packing`/`files`/`costs`/`meta` reads
-  → `RESOURCE_FORBIDDEN`. React with `ctx.db`, `ctx.ws.*`, or an outbound call.
+- **Payload by version.** ≤3.2.1: the handler gets **only `{ event, tripId }`**.
+  **≥3.3.0** enriches it to `{ event, tripId, entity?, entityId?, snapshot? }` —
+  `entity` is the family (e.g. `'reservation'`), `entityId` which entity changed,
+  and `snapshot` a whitelisted shallow copy of the changed fields, so you can act
+  without a follow-up read. ⚠️ **`snapshot` is delivered only when the plugin
+  also holds that family's `db:read:*` grant** — without it, `snapshot`/`entity`
+  are absent, so `'never the payload'` still holds when ungranted. Either way the
+  handler runs with **no user** (`ctx.trips`/`packing`/`files`/`costs`/`meta` reads
+  → `RESOURCE_FORBIDDEN`); react with `ctx.db`, `ctx.ws.*`, or an outbound call.
 - **Fire-and-forget, ~5 s timeout, best-effort:** a slow or throwing subscriber is
   dropped and can never block or fail a core write.
 - Your own `plugin:<id>:*` broadcasts are **not** re-delivered, so a handler that
   broadcasts can't loop back into itself.
 - The grant is enforced host-side: an active plugin that implements `events` but
   lacks `events:subscribe` is silently never called.
+
+## Inter-plugin capabilities (≥3.3.0)
+
+Plugins can call and notify each other along **declared dependency edges** — the
+producer lists `capabilities.provides` / `capabilities.emits`, the consumer lists
+`pluginDependencies` (see [manifest.md](manifest.md)):
+
+- **`ctx.plugins.call(pluginId, fn, args)`** — invoke another plugin's
+  `capabilities.provides` export (its definition-level `exports[fn]`). Runs as the
+  **current user**, so the callee's own `ctx` permission checks still apply.
+- **`ctx.events.emit(name, payload)`** — publish an event (`name` must be in your
+  `capabilities.emits`) to every dependent that declared a matching
+  `subscriptions` entry; their handler runs with the emitted payload.
+- Definition keys: `exports: { <fn>(args, ctx) }` (the callable targets) and
+  `subscriptions: [{ plugin, event, handler }]` (consume a dependency's emits).
+
+The host routes these via `exportsOf` / `subscribersOf` built from the declared
+edges — an undeclared call/emit is refused.
 
 ## Error codes
 
@@ -267,8 +413,12 @@ code**, e.g. `"PERMISSION_DENIED: …"` — catch and match on that.
   or inactive plugin → **404**; missing auth on an `auth:true` route → **401**.
 - `auth: true` (default): `req.user` is the logged-in user. `auth: false` for
   OAuth callbacks / webhooks.
-- The proxy forwards only `{ method, path, query, body, user }` — no raw headers,
-  no session cookie.
+- The proxy forwards `{ method, path, query, body, user }` — no session cookie.
+  **≤3.2.1: no raw headers at all.** **≥3.3.0** adds `req.headers` on
+  **`auth:false` (webhook) routes only** — a credential-free **allowlist** of
+  inbound headers (provider signature + event headers; **never** `Cookie` /
+  `Authorization` / session). Empty on authenticated routes. This is how you
+  **verify a webhook signature** against a secret in `ctx.config`/`ctx.settings`.
 - **Response constraints:** of your `headers`, only **`content-type` and
   `cache-control`** pass through (everything else — incl. `set-cookie`, custom
   headers — is dropped). Every reply is forced `X-Content-Type-Options: nosniff`
@@ -309,6 +459,7 @@ See the egress trap in [manifest.md](manifest.md).
 | Crash policy | **5 crashes / 5 min → auto-disabled** (status `error`); else restart, backoff capped **30 s** | supervisor |
 | SIGTERM→SIGKILL grace | **3 s** | supervisor |
 | Artifact (install) | 25 MB/file, 50 MB total, 4000 entries | `install/safe-extract.ts` |
+| **RPC rate limit (≥3.3.0)** | Per-plugin token bucket at the `ctx` dispatch boundary: **burst 60, 20/s, 16 in-flight** (env `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`). A runaway plugin is throttled instead of freezing the single-threaded host. | `host/rate-limit.ts` |
 
 ## What plugin code can NOT do
 
