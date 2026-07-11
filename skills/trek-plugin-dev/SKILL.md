@@ -136,7 +136,10 @@ with no iframe. See [references/server-api.md](references/server-api.md).
    the **`http:outbound:<host>` permissions**, *not* from `egress[]` (which is
    only checked for presence). A host listed in `egress[]` but not granted as
    `http:outbound:<host>` is **silently blocked at runtime**. Keep both lists
-   identical. Bare `http:outbound` alone reaches nothing.
+   identical. Bare `http:outbound` alone reaches nothing — **unless (≥3.3.0) you
+   set `operatorEgress: true`**, which waives the non-empty-`egress[]` rule so you
+   ship an **empty `egress[]`** and the **admin configures the real hosts at
+   runtime** (for plugins whose egress hosts aren't known up front).
 4. **`ctx.trips`, `ctx.users`, `ctx.costs`, `ctx.ws.*` — and (≥3.2.1)
    `ctx.packing`/`ctx.files`/`ctx.places`/`ctx.days`/`ctx.itinerary`/`ctx.trips.update`/`ctx.meta` — work
    only inside route handlers** (they need the acting user the host binds from the

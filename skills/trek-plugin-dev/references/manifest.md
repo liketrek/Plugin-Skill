@@ -21,7 +21,8 @@ registry CI, and the TREK install loader all apply the **same** rules
 | `license` | string | no | Shown in store detail; read, not enforced. |
 | `nativeModules` | boolean | no | Must be `false` or absent; `true` is rejected everywhere ("native modules are not allowed (v1)"). |
 | `permissions` | string[] | no | Only known permissions (below); an unknown string fails validation. |
-| `egress` | string[] | conditional | Required non-empty when any `http:outbound` permission is present. No bare `"*"`. Hosts must match the host grammar (below). |
+| `egress` | string[] | conditional | Required non-empty when any `http:outbound` permission is present. No bare `"*"`. Hosts must match the host grammar (below). **Exception (≥3.3.0):** with `operatorEgress: true` an **empty `egress[]` is allowed** — see the next row. |
+| `operatorEgress` | boolean | no | **(≥3.3.0)** Defers the outbound allow-list to the operator. When `true`, an **empty `egress[]` passes validation** even though an `http:outbound*` permission is present (the normal "non-empty when `http:outbound*`" rule is waived), because the **admin adds the actual egress hosts at runtime**. Use it for plugins whose reachable hosts aren't known at authoring time (user-supplied endpoints, a self-hosted backend the admin points at). You still declare the `http:outbound` marker permission; the operator-configured hosts are what the runtime egress guard then allows. |
 | `requiredAddons` | string[] | no | Addon ids (`^[a-z][a-z0-9_]{1,39}$`, ≤ 16, e.g. `["budget"]`) that must be enabled in TREK. **Registry metadata:** `validateManifest`/`pack` accept it (unknown keys pass), but the v3.2.1 SDK ignores it and TREK doesn't yet enforce it at activation — its only teeth are the registry's **parity gate**, which requires the entry to carry the **identical** array (the SDK's `entry` won't copy it — add it to the entry by hand). See [publishing.md](publishing.md). |
 | `pluginDependencies` | object[] | no | `{ id, version }[]` (≤ 32) — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` ≤ 100 chars). Same status as `requiredAddons`: passthrough metadata, enforced only by the registry parity gate; mirror it in the entry by hand. |
 | `capabilities.widget` | object | no | `{ "title": string, "slot": …, "defaultSize": … }`. Optional even for widget plugins as far as validation goes; when present, `slot` must be `sidebar` (default), `hero`, **`place-detail` (≥3.2.1)**, or **`day-detail` / `reservation-detail` (≥3.3.0)** — any other value is rejected. Scoped slots each mount a chrome-free panel and get an extra id in `trek:context`: `place-detail` → `placeId` (place inspector), **`day-detail` → `dayId`** (foot of the day panel), **`reservation-detail` → `reservationId`** (under each reservation/journey card). None appear on the dashboard. **Scaffold gotcha:** `create` writes `{ title, defaultSize: "medium" }` **without `slot`**, so a new widget defaults to `sidebar` — add `"slot": "hero"` yourself if you want the boarding-pass overlay. `defaultSize` is declarative only: the dashboard renders `sidebar` widgets in a **fixed ~180px, `overflow-hidden` slot** regardless, so build compact (see [server-api.md](server-api.md) / client-bridge.md). |
@@ -120,6 +121,15 @@ Consequence: a host in `egress[]` without a matching `http:outbound:<host>`
 permission passes validation and install, then every request to it is refused
 at runtime with no manifest error. **Rule: list every host you call as *both*
 an `http:outbound:<host>` permission *and* an `egress[]` entry, identical.**
+
+**Exception — operator-managed egress (≥3.3.0):** set top-level
+`operatorEgress: true` and the non-empty-`egress[]` requirement is **waived** —
+you can ship an **empty `egress[]`** (with just the bare `http:outbound` marker)
+and the **operator adds the allowed hosts at runtime**; those admin-configured
+hosts drive the guard. Use this only when you genuinely can't know the hosts up
+front (user-supplied endpoints, a self-hosted service). Otherwise the static
+`http:outbound:<host>` + `egress[]` pairing above is clearer and needs no admin
+step.
 
 Host grammar (both places): exact hostname (`api.example.com`) or wildcard
 `*.suffix` with a multi-label suffix (`*.example.com` — matches apex and
