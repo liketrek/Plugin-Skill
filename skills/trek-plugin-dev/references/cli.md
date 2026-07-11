@@ -11,13 +11,13 @@ npx trek-plugin-sdk <command> [args]
 
 | Command | Needs | What it does |
 |---|---|---|
-| `create [name] [--type t] [--author x] [--description x] [--permissions "a,b"] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. **≥1.3.0:** page/widget scaffold emits a **design-kit client** (`<!-- trek:ui -->` marker + a `window.trek` UI). |
-| `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. **≥1.3.0:** also serves a themed host preview at **`/preview`** and expands the `<!-- trek:ui -->` marker on `/ui`. See [testing.md](testing.md). |
+| `create [name] [--type t] [--author x] [--description x] [--permissions "a,b"] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. The page/widget scaffold emits a **design-kit client** (`<!-- trek:ui -->` marker + a `window.trek` UI). |
+| `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. Also serves a themed host preview at **`/preview`**, expands the `<!-- trek:ui -->` marker on `/ui`, and exposes `/__dev/fire/*` for non-route entry points. See [testing.md](testing.md). |
 | `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json`, missing `README.md`, or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, or scaffold placeholders remain. Since `pack` validates first, a missing README also fails `pack`. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
-| `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. ⚠️ The printed hash describes **this pack only** — output is **not byte-reproducible** across machines or even SDK patch versions (1.3.0 vs 1.3.1 → different sha256 *and* size from identical LF sources; zip metadata/mtimes). The registry `sha256`/`size` must come from the **uploaded release asset**, never a re-pack (see [publishing.md](publishing.md)). |
+| `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. ⚠️ Zip mod dates are fixed (deterministic for a given SDK+machine), but re-packs on other machines/SDK versions can still differ (CRLF, walk order) — the registry `sha256`/`size` must come from the **uploaded release asset**, never a re-pack (see [publishing.md](publishing.md)). |
 | `entry [dir] --repo <owner/name> --tag <vX.Y.Z> [--dir d] [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>] [--sign [key]]` | git + network | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, `minTrekVersion`. `--merge` prepends the new version (newest-first) and refuses a key switch / unsigned update to a signed plugin. ⚠️ **Run it only after the GitHub release with `plugin.zip` attached exists** — it verifies the release asset and fails with `artifact not found` otherwise. Order: pack → release (asset attached) → `entry`. |
 | `release [dir] --repo <o/n> --tag <vX.Y.Z> [--out] [--notes] [--commit] [--merge] [--sign [key]]` | git + `gh` (authed) | One shot: `pack` → `gh release create` (uploads the zip) → prints the entry. |
-| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity, artifact sha256 + size, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI. (Historical: **SDK ≤ 1.3.x `preflight` had a bug** — `preflight.ts:50` hardcoded `['integration','page','widget']` and **failed every `trip-page` plugin** even though registry CI passed. **Fixed in SDK 1.4.0**; irrelevant on the current SDK.) |
+| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity, artifact sha256 + size, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI. |
 | `submit --repo <o/n> --tag <vX.Y.Z> [--branch <name>] [--keep] [--draft] [--registry <owner/name>] [--zip] [--commit] [--sign [key]]` | `gh` (authed) | Forks TREK-Plugins (once), branches (`plugin-<id>-<version>` unless `--branch`), writes/merges the entry, pushes, opens the PR. `--keep` keeps the temp clone dir. **`submit` does NOT run preflight** (a clean path if you ever need to skip it). |
 | `publish --repo <o/n> --tag <vX.Y.Z> [--sign [key]] [--no-preflight] [--draft] [--registry <owner/name>] [--notes <text>]` | git + `gh` (authed) | **One-command release:** pack → tag + GitHub release → preflight → registry PR. Stops before submitting if preflight fails — **`--no-preflight` skips that safety gate** (don't, in general). Works for every type incl. `trip-page` on the current SDK. |
 | `keygen [--key <file>]` | — | Creates a dependency-free Ed25519 signing key (default `~/.trek-plugin/signing.key`; back it up!). |
@@ -28,7 +28,7 @@ npx trek-plugin-sdk <command> [args]
 `~/.trek-plugin/signing.key`, or an inline path / `--key`). `submit`/`entry
 --merge` refuse a *different* key or an *unsigned* update to a signed plugin.
 
-## Interactive mode (SDK ≥ 1.3.0 / TREK ≥ 3.2.1)
+## Interactive mode
 
 Running `npx trek-plugin-sdk` with **no command** in a terminal opens a menu
 (Create / dev / validate / pack / publish, plus an **Advanced…** submenu for
@@ -60,7 +60,7 @@ Excluded: `node_modules`, `.git`, `.ts` sources, `.map` files — and **`docs/`
 intentionally** (the store fetches `docs/screenshot.png` from your repo at the
 pinned commit; keep it committed, out of the zip).
 
-**≥1.3.0:** every `.html` entering the zip is run through `injectTrekUi`, so a
+Every `.html` entering the zip is run through `injectTrekUi`, so a
 `<!-- trek:ui -->` marker is expanded into the inlined design kit at pack time
 (your source stays a one-liner).
 
@@ -106,10 +106,10 @@ Failure behavior worth knowing: the git tag must **equal** the manifest
 "vX.Y.Z" (is it pushed?)`; `preflight`/CI fail on any gate in
 [publishing.md](publishing.md#ci-gates).
 
-## Dev-link — run your local build inside a real instance (≥3.3.0, DEV-ONLY)
+## Dev-link — run your local build inside a real instance (DEV-ONLY)
 
-`trek-plugin dev` only **mocks** the host (see [testing.md](testing.md)). ≥3.3.0
-adds a first-class **dev-link** path that runs your *same local build* inside a
+`trek-plugin dev` only **mocks** the host (see [testing.md](testing.md)). The
+**dev-link** path instead runs your *same local build* inside a
 **real running TREK instance against real trip data** — the fidelity `dev` can't
 give you. It is strictly a development tool, **gated behind an env flag and off
 by default; never enable it in production** (it bypasses the signing/integrity

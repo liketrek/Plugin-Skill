@@ -23,37 +23,34 @@ Fidelity details:
 - The injected `ctx` **enforces exactly the permissions your manifest
   grants** — an ungranted call throws `PERMISSION_DENIED`, so you catch a
   missing grant before install.
-- **Dev `ctx` has FULL parity (SDK 1.4.0, current).** `createDevContext` wraps the
-  same **grant-enforcing `createMockHost`** and overrides only `db:own` (real
+- **Dev `ctx` has FULL parity.** `createDevContext` wraps the same
+  **grant-enforcing `createMockHost`** and overrides only `db:own` (real
   `node:sqlite`), `ws` (captured broadcasts), and `log` (console). **Every** other
   namespace — `costs`/`packing`/`files`/`meta`/`places`/`days`/`itinerary`/
   `notify`/`ai`/`settings`/`scheduler`/`oauth`/`weather`/`rates`/`journal`/`atlas`/
   `vacay`/`collections`/`collab`/`tags`/`todos`/`daynotes`/`accommodations`/
   `reservations`/`plugins`/`events` — **works in dev** under the same
   permission/membership/addon gates as production.
-  - *Historical (SDK ≤ 1.3.x):* the dev `ctx` implemented only `db`/`trips`/
-    `users`/`ws`/`log`/`config`, leaving the ≥3.2.1 namespaces **`undefined`** —
-    a route using them threw `Cannot read properties of undefined` (**synchronously
-    at property access**, so `await attempt(ctx.meta.get(x))` didn't catch it; you
-    needed a thunk `attempt(() => ctx.meta.get(x))`). Irrelevant on the current SDK.
-  - ⚠️ **Keep the thunk-guard pattern in production code regardless** — the same
-    namespaces have been observed partly `undefined` on **real hosts** too, so
-    treat `db:own` as the source of truth and mirror to `ctx.meta` best-effort
-    (see [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
-    It's a **real-host** safeguard, not a dev-server one.
+  - ⚠️ **Still guard optional namespaces in production code** — enrichment
+    namespaces like `ctx.meta` have been observed partly `undefined` on real
+    hosts, and the throw is **synchronous at property access** (so
+    `await attempt(ctx.meta.get(x))` doesn't catch it — use a thunk:
+    `attempt(() => ctx.meta.get(x))`). Treat `db:own` as the source of truth and
+    mirror to `ctx.meta` best-effort (see
+    [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
 - `db:own` is backed by a real SQLite file at `.trek-dev/db.sqlite` when the
   Node runtime has `node:sqlite`.
 - Simulate an unauthenticated request with `?_anon=1` — an `auth: true` route
   then returns 401, mirroring the host.
 - Feed `ctx.*` with fixtures: drop a `dev-fixtures.json` next to the manifest. It
-  **IS the full `MockHostOptions` object** (SDK 1.4.0 passes `{ ...fx }` straight
+  **IS the full `MockHostOptions` object** (`dev` passes `{ ...fx }` straight
   into `createMockHost`), so you can seed the entire surface (`costs`, `packing`,
   `files`, `weather`, `ai`, `rates`, `userSettings`, `tags`, `journals`,
   `collections`, `atlasVisited`, `pluginExports`, `declaredEmits`, per-trip
   `can`/`canEdit*` rights, addon-enable toggles, …) — see the `createMockHost`
   options list below. It also honours **`actingUserId`**, which dev **defaults to
   `1`** when omitted, so the documented one-arg user-bound calls work on a fresh
-  scaffold. (SDK ≤ 1.3.x accepted only `trips`/`users`/`config`.)
+  scaffold.
 
 ```json
 {
@@ -66,11 +63,11 @@ Fidelity details:
 }
 ```
 
-### Firing non-route entry points in the dev server (≥ SDK 1.4.0)
+### Firing non-route entry points in the dev server
 
 Routes are reachable at `/api/<path>`, but jobs, scheduled timers, event
-subscriptions, GDPR handlers and provider hooks have no URL of their own. SDK
-1.4.0's dev server adds side-effectful **`/__dev/fire/<kind>[/<name>][/<fn>]`**
+subscriptions, GDPR handlers and provider hooks have no URL of their own. The
+dev server exposes side-effectful **`/__dev/fire/<kind>[/<name>][/<fn>]`**
 GET/POST endpoints (the browser-side mirror of `run(def)`):
 
 - `/__dev/fire/job/<id>`
@@ -99,18 +96,16 @@ It adds:
 
 - **`scripts/shot.mjs`** (+ `scripts/store-shot.html`) and npm scripts:
   - `npm run preview-shot` → `docs/preview-light.png` + `docs/preview-dark.png`
-    (the **real** widget via dev's `/preview`, SDK ≥ 1.3.0) — **show these for UI
+    (the **real** widget via dev's `/preview`) — **show these for UI
     sign-off**.
   - `npm run shot` → `docs/screenshot.png` (the composed store image; edit
     `scripts/store-shot.html`'s CONFIG first). `shot.mjs` starts `dev`, captures
     at 1600×900, and stops it; it places the harness in `client/` **only** for the
     shot and deletes it, so it never ships in `plugin.zip`.
 - **`.gitattributes`** (`* text=auto eol=lf`) so line endings don't change your
-  file bytes across platforms (the CRLF trap). ⚠️ This does **not** make
-  `plugin.zip` byte-reproducible: different SDK patch versions produce different
-  sha256/size from identical LF sources (zip metadata/mtimes) — the registry
-  `sha256`/`size` must always come from the **uploaded release asset**, see
-  [publishing.md](publishing.md).
+  file bytes across platforms (the CRLF trap). ⚠️ Even so, the registry
+  `sha256`/`size` must always come from the **uploaded release asset**, never a
+  re-pack on another machine — see [publishing.md](publishing.md).
 - **`dev-fixtures.json`** template for the dev server.
 - **`--web-hook`:** a **SessionStart hook** (`.claude/hooks/plugin-dev.sh`, wired
   into `.claude/settings.json`) that runs `npm install` on each new session — so a
@@ -123,13 +118,12 @@ Claude Code environments).
 ## Previewing the UI with an emulated host
 
 The dev server exposes: `/` (a dashboard listing your routes), `/ui` (your
-`client/index.html` — live-reload injected, and on **≥ SDK 1.3.0** the
-`<!-- trek:ui -->` marker expanded; other assets byte-verbatim), `/api/<path>`
-(your routes), and — **≥ SDK 1.3.0** — **`/preview`**: a **themed host** that
-embeds `/ui` in a sandboxed opaque-origin iframe (exactly TREK's isolation) and
-speaks the full bridge — it posts `trek:context` with **light/dark + accent +
-appearance toggles**, proxies `trek:invoke` to `/api`, and handles
-resize/notify/navigate. So on ≥1.3.0 you preview the themed UI **without any
+`client/index.html` — live-reload injected, `<!-- trek:ui -->` marker expanded;
+other assets byte-verbatim), `/api/<path>` (your routes), and **`/preview`**: a
+**themed host** that embeds `/ui` in a sandboxed opaque-origin iframe (exactly
+TREK's isolation) and speaks the full bridge — it posts `trek:context` with
+**light/dark + accent + appearance toggles**, proxies `trek:invoke` to `/api`,
+and handles resize/notify/navigate. So you preview the themed UI **without any
 harness** — just open `/preview`.
 
 `/preview` still sets **no CSP** (like `/ui`), so it reproduces the sandbox +
@@ -137,11 +131,11 @@ bridge + theming but **not** the per-plugin CSP — validate image/font choices
 against the real frame (see the CSP caveat in
 [client-bridge.md](client-bridge.md)).
 
-**On older SDKs (≤1.2.1)** there is no `/preview` and **nothing answers the
-bridge**: open `/ui` and no parent replies to `trek:ready`/`trek:invoke`, so a
-widget stays stuck in its loading state. Build the small host harness below to
-drive it. (The harness is also the basis for the composed store image — see
-[store-shot.html](../assets/store-shot.html) — which `/preview` does not produce.)
+On bare `/ui` (without `/preview`) **nothing answers the bridge** — no parent
+replies to `trek:ready`/`trek:invoke`, so a widget stays stuck in its loading
+state. The small host harness below drives `/ui` directly; it is also the basis
+for the composed store image (see
+[store-shot.html](../assets/store-shot.html)), which `/preview` does not produce.
 
 > **Show the draft, don't describe it.** As soon as a page/widget UI first
 > renders, screenshot it (both light and dark) via `/preview` or the harness
@@ -265,7 +259,7 @@ export interface MockHostOptions {
   config?: Record<string, unknown>;         // becomes ctx.config (frozen)
   actingUserId?: number;                    // host-bound user — required for any costs.*
   budgetAddonEnabled?: boolean;             // default true; false → RESOURCE_FORBIDDEN
-  // (≥3.3.0 / SDK 1.4.0) more addon-enable flags (each defaults true; false → RESOURCE_FORBIDDEN):
+  // addon-enable flags (each defaults true; false → RESOURCE_FORBIDDEN):
   journeyAddonEnabled?; atlasAddonEnabled?; vacayAddonEnabled?; collectionsAddonEnabled?; collabAddonEnabled?: boolean;
   // inter-plugin + per-user + broker fixtures:
   pluginExports?; declaredEmits?; userSettings?; tags?; journals?; journalEntries?; collections?;
@@ -304,7 +298,7 @@ export interface MockHost {
 export function createMockHost(opts?: MockHostOptions): MockHost;
 ```
 
-### Driving the plugin's own handlers — `run(def)` (≥3.3.0 / SDK 1.4.0)
+### Driving the plugin's own handlers — `run(def)`
 
 `createMockHost(...).run(def)` returns a **`PluginDriver`** that fires the
 plugin's **own** entry points against the mock ctx — the "assert what the plugin

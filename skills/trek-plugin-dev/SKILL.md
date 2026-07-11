@@ -7,8 +7,8 @@ description: Build, test, and publish plugins for TREK, the self-hosted travel p
 
 Build plugins for [TREK](https://github.com/mauriceboe/TREK), a self-hosted
 trip-planning app. A plugin is a directory with a manifest (`trek-plugin.json`),
-a built CommonJS server entry (`server/index.js`), and — for `page`/`widget`
-(and `trip-page`, ≥3.2.1) types — a static client bundle (`client/`). TREK runs the server part in an
+a built CommonJS server entry (`server/index.js`), and — for `page`/`widget`/
+`trip-page` types — a static client bundle (`client/`). TREK runs the server part in an
 **isolated child process** reached only over RPC, and the UI in a **sandboxed,
 opaque-origin iframe**. Distribution happens through the
 [TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins) registry: a static
@@ -88,7 +88,7 @@ suggestions derived from what the plugin does**:
   [references/testing.md](references/testing.md#dev-kit--screenshots--reproducible-builds-in-one-step).
 - Or drive it headlessly yourself (Chromium/Playwright is preinstalled).
   Screenshot **both light and dark**.
-- **≥ SDK 1.3.0:** open `dev`'s themed **`/preview`** (light/dark/accent toggles).
+- Open `dev`'s themed **`/preview`** (light/dark/accent toggles).
 - **For the composed store image:** the ready-made
   [`assets/store-shot.html`](assets/store-shot.html) renders both-theme cards +
   title + feature pills on an accent-driven background (`glow`/`mesh` ·
@@ -102,26 +102,24 @@ See [references/testing.md](references/testing.md).
 
 | `type` | Surfaces | Use for |
 |---|---|---|
-| `widget` | Dashboard card (`sidebar` slot — ~180px on 3.2.0, glassy auto-height on ≥3.2.1) or a **non-interactive** boarding-pass hero strip (`hero` slot, ~110px, desktop-only). also the `place-detail` slot → a panel in the trip planner's place inspector (gets `placeId`); also `day-detail` (gets `dayId`) and `reservation-detail` (gets `reservationId`) | At-a-glance info (flight status, weather, mascot); a per-place/day/reservation add-on |
+| `widget` | Dashboard card (`sidebar` slot — glassy auto-height) or a **non-interactive** boarding-pass hero strip (`hero` slot, ~110px, desktop-only); plus the scoped planner slots `place-detail` (gets `placeId`), `day-detail` (`dayId`), and `reservation-detail` (`reservationId`) | At-a-glance info (flight status, weather, mascot); a per-place/day/reservation add-on |
 | `page` | Own entry in the top navigation → full-page iframe (you own the layout) | A self-contained tool |
 | `trip-page` | A tab **inside every trip planner**, scoped to the open trip (`tripId` always set); full-frame like `page`, no dashboard nav. `capabilities.tripPage` can replace core tabs / set tab position (tab-takeover) | A per-trip tool |
-| `integration` | No UI; background routes, plus **wired provider hooks** (≥3.2.1: place-detail / trip-warning; **≥3.3.0: table / map-marker / pdf-section / atlas-layer / journal-entry / trip-card**, plus photo/calendar now consumed) | Feeding/syncing data; enriching core UI natively |
+| `integration` | No UI; background routes, jobs, events, plus **wired provider hooks** (place-detail / trip-warning / table / map-marker / pdf-section / atlas-layer / journal-entry / trip-card / photo / calendar) | Feeding/syncing data; enriching core UI natively |
 
-Note: **`jobs[]` scheduling is version-dependent.** ≤3.2.1: **declared but never
-scheduled** (no cron runner) — build periodic work as routes. **≥3.3.0: jobs run
-via node-cron when the `jobs:run` grant is present** (opt-in, userless), and a
-persistent **`ctx.scheduler`** (`at`/`in`/`every`/`cancel`, also `jobs:run`) adds
+Note: **`jobs[]` need the `jobs:run` grant** — with it, declared cron jobs run
+via node-cron (userless); without it they never fire. The persistent
+**`ctx.scheduler`** (`at`/`in`/`every`/`cancel`, same grant) adds
 restart-surviving one-shot/recurring callbacks into a `scheduled` handler. **To
-react to core activity, use `events` (≥3.2.1, WIRED):** `events: [{ on, handler }]`
-+ `events:subscribe`; the handler gets `{ event, tripId }` (**≥3.3.0 also
-`entity`/`entityId`/`snapshot`** when you hold the family's `db:read:*`), runs with
-no user, fire-and-forget. The `hooks` surface: ≤3.2.1
-`photoProvider`/`calendarSource` **validate but aren't consumed** while
-`placeDetailProvider`/`warningProvider` **are wired**; **≥3.3.0 wires six more**
-(table/map-marker/pdf-section/atlas-layer/journal-entry/trip-card) **and** consumes
-photo/calendar, plus a GDPR **`hook:user-data`** (`deleteUserData`/`exportUserData`,
-userless, own-db) — so an `integration` can inject native UI or honour data-rights
-with no iframe. See [references/server-api.md](references/server-api.md).
+react to core activity, declare `events`:** `events: [{ on, handler }]` +
+`events:subscribe`; the handler gets `{ event, tripId, entity?, entityId?,
+snapshot? }` (`snapshot` only when you also hold the family's `db:read:*`), runs
+with no user, fire-and-forget. All ten **provider hooks are wired**
+(place-detail / trip-warning / table / map-marker / pdf-section / atlas-layer /
+journal-entry / trip-card / photo / calendar), plus the GDPR **`hook:user-data`**
+(`deleteUserData`/`exportUserData`, userless, own-db) — so an `integration` can
+inject native UI or honour data-rights with no iframe. See
+[references/server-api.md](references/server-api.md).
 
 ## Critical rules (violating any of these breaks install or CI)
 
@@ -152,7 +150,7 @@ with no iframe. See [references/server-api.md](references/server-api.md).
    (`place_edit`/`day_edit`/`trip_edit`/`budget_edit`), exactly like the web UI.
    `ctx.meta` stores the plugin's own namespaced data on a trip/place/day (reads
    need trip access, writes the entity's edit permission). **Heads-up: these
-   ≥3.2.1 namespaces (`meta`/`places`/`days`/`itinerary`/`costs`/`packing`/`files`/
+   enrichment namespaces (`meta`/`places`/`days`/`itinerary`/`costs`/`packing`/`files`/
    `trips.update`) have been observed partly `undefined` on real hosts** (the dev
    server has full parity on the current SDK). Treat them all as optional: `db:own`
    as source of truth, `ctx.meta` only a best-effort mirror, every optional call
@@ -180,11 +178,10 @@ with no iframe. See [references/server-api.md](references/server-api.md).
    pack, CI, and install time. `nativeModules` must be `false`/absent.
 6. **Git tag == manifest `version`** (`v1.2.3` ↔ `"version": "1.2.3"`), and the
    registry pins the release asset's exact **sha256** — never re-upload or
-   mutate a released `plugin.zip`; cut a new version instead. The zip is **not
-   byte-reproducible** (different machines/SDK patch versions → different
-   sha256+size from identical sources), so always take `sha256`/`size` **from
-   the uploaded release asset**, never from a local re-pack — see
-   [references/publishing.md](references/publishing.md).
+   mutate a released `plugin.zip`; cut a new version instead. Re-packs on other
+   machines/SDK versions can produce **different bytes** (CRLF, walk order), so
+   always take `sha256`/`size` **from the uploaded release asset**, never from a
+   local re-pack — see [references/publishing.md](references/publishing.md).
 7. **README quality gate is a hard CI gate:** sections **What it does /
    Screenshots / Permissions / Setup** (substring-matched, any heading level),
    ≥ 400 chars of real prose, at least one screenshot whose URL returns
@@ -208,17 +205,17 @@ with no iframe. See [references/server-api.md](references/server-api.md).
     host reads real routes off the loaded `definePlugin` object; a page's nav
     entry uses top-level `name` as its label but a **fixed `Blocks` icon** — the
     manifest `icon` is *not* used for nav (only on the Admin/store card).
-13. **The UI frame renders no bundled or external images/fonts (≤3.2.1).** It runs
-    at an opaque origin under a strict CSP (`img-src 'self' data: blob:`,
-    `font-src 'self' data:`) where `'self'` matches nothing — so relative file
-    paths (`./logo.png`) and external URLs don't load; only inline SVG,
-    `data:`/`blob:` images, and the system font stack work. Draw artwork as
-    inline SVG (like koffi). **≥3.3.0 re-enables your OWN bundled assets** via an
-    own-path CSP source (`./logo.png`, bundled `.woff2`, a multi-file Vite/React
-    build load without inlining — external CDNs still blocked); keep inlining as
-    the portable path for ≤3.2.1. `trek-plugin dev` applies **no** CSP/sandbox, so
-    an image that works in `dev` can still fail in the real host — verify against
-    the real frame. See [references/client-bridge.md](references/client-bridge.md).
+13. **The UI frame loads only its own bundled assets — never external ones.**
+    It runs at an opaque origin under a strict CSP where `'self'` matches
+    nothing; an explicit **own-path source** allows your `client/` files by
+    relative path (`./logo.png`, a bundled `.woff2`, a multi-file Vite/React
+    build — no inlining needed), while **external CDNs/fonts stay blocked** and
+    `data:`/`blob:`/inline SVG always work. The own-path allow depends on a
+    well-formed `Host` header — for load-bearing artwork, inline SVG is the most
+    robust (koffi's mascot is inline SVG). `trek-plugin dev` applies **no**
+    CSP/sandbox, so an external asset that works in `dev` still fails in the
+    real host — verify against the real frame. See
+    [references/client-bridge.md](references/client-bridge.md).
 
 ## Isolation model (what plugin code can rely on)
 
@@ -231,7 +228,7 @@ with no iframe. See [references/server-api.md](references/server-api.md).
 - UI iframe: opaque origin (sandbox without `allow-same-origin`), no cookies,
   no parent DOM; talks to TREK only via `postMessage` with target origin `'*'`;
   CSP `default-src 'none'`, `connect-src` limited to granted hosts.
-- **(≥ 3.2.1)** the raw child↔host IPC channel is sealed before your code loads —
+- The raw child↔host IPC channel is sealed before your code loads —
   `process.send` / `process.on('message')` / `disconnect` are revoked; `ctx` is
   the only channel in.
 - Crash/hang/OOM kills only the plugin's process; TREK keeps running. Watchdog:
@@ -246,10 +243,10 @@ with no iframe. See [references/server-api.md](references/server-api.md).
 
 - Plugin system is **on by default**; kill switch `TREK_PLUGINS_ENABLED=false`
   (also accepts `0`/`off`/`no`). Admin UI: **Admin → Plugins** (Installed /
-  Discover). **Rescan** re-reads the plugins directory and **(≥ 3.2.1)
-  force-refreshes the remote registry** (bypasses the 30-min + GitHub CDN cache,
-  so a just-merged plugin shows up immediately).
-- **(≥ 3.2.1) Sideloading:** admins can upload a plugin `.zip`/`.tar.gz` via
+  Discover). **Rescan** re-reads the plugins directory and **force-refreshes the
+  remote registry** (bypasses the 30-min + GitHub CDN cache, so a just-merged
+  plugin shows up immediately).
+- **Sideloading:** admins can upload a plugin `.zip`/`.tar.gz` via
   Admin → Plugins (drag-drop / Upload). It installs **inactive**, is flagged
   **Sideloaded** (`local:upload`, unsigned, unreviewed, no auto-update), and
   still needs activation + permission consent; same extract/manifest/native
@@ -286,14 +283,14 @@ that matches your plugin's shape:
 - **`trip-doctor`** — a **hooks-only, no-UI** `integration`: it feeds
   TREK's own planner surfaces through `warningProvider.getWarnings` and
   `placeDetailProvider.getDetails`, and pins private notes via `ctx.meta` behind a
-  `POST /pin` route. The reference for the ≥3.2.1 provider-hook + `db:meta`
+  `POST /pin` route. The reference for the provider-hook + `db:meta`
   pattern — TREK renders everything natively, so there's no CSP/iframe to fight.
   (Its README's `npx @trek/plugin-sdk …` and "signed `.trekplugin` bundle" are
   example prose, **not** the real CLI — the package is `trek-plugin-sdk` and
   `pack` emits `plugin.zip`; signing is a separate `sign` step. Use the commands
   in [cli.md](references/cli.md).)
 
-The **Plugin Cookbook** (`wiki/Plugin-Cookbook.md`, ≥3.2.1) collects copy-paste
+The **Plugin Cookbook** (`wiki/Plugin-Cookbook.md`) collects copy-paste
 recipes for the above plus itinerary writes, meta tagging, `ws` broadcast, and
 the `trek:ui` design kit — a good first stop when you know the capability but not
 the exact call.
