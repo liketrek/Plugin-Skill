@@ -105,3 +105,34 @@ Failure behavior worth knowing: the git tag must **equal** the manifest
 `--commit <sha>`), else it fails with `could not resolve the commit for tag
 "vX.Y.Z" (is it pushed?)`; `preflight`/CI fail on any gate in
 [publishing.md](publishing.md#ci-gates).
+
+## Dev-link — run your local build inside a real instance (≥3.3.0, DEV-ONLY)
+
+`trek-plugin dev` only **mocks** the host (see [testing.md](testing.md)). ≥3.3.0
+adds a first-class **dev-link** path that runs your *same local build* inside a
+**real running TREK instance against real trip data** — the fidelity `dev` can't
+give you. It is strictly a development tool, **gated behind an env flag and off
+by default; never enable it in production** (it bypasses the signing/integrity
+model, and under `npm run dev` runs with the OS permission jail **off** — though
+DATA access stays fully capability-gated).
+
+Steps:
+
+1. **Build** the plugin so a real **`server/index.js`** exists — the loader runs
+   the compiled artifact, **not** TS (`no built server/index.js` otherwise).
+2. Start TREK with **`TREK_PLUGINS_DEV_LINK=1`** (accepts only exactly `1`).
+3. **Admin → Plugins** shows a "link" form — paste the **absolute** path to the
+   built plugin dir (or `POST /api/admin/plugins/link { path }`). The host
+   validates the manifest, refuses native binaries (same guards as sideload), and
+   **symlinks** `<plugins>/<id>` → your source (Windows junction, no elevation).
+4. It registers **INACTIVE**, flagged **Dev-linked** (`source_repo='local:link'`,
+   unsigned, sha256/pubkey nulled, **no auto-update**) — then **activate + consent**.
+5. **Rebuild** → an `fs.watch` on `server/` **auto re-forks**; or hit **Reload** /
+   `POST /api/admin/plugins/:id/reload` on demand.
+
+Gotchas: the path must be **absolute** and point at **built JS** (not TS); you
+**can't dev-link an id already installed** from registry/sideload (uninstall
+first); a rebuilt manifest that **widens permissions forces re-consent** on
+reload; and discovery only follows the symlink **while dev-link mode is on**, so a
+stale link is ignored on a normal boot. The admin UI only renders the link form
+when the server reports `devLink:true` (`GET /api/admin/plugins`).

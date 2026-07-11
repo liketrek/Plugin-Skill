@@ -364,8 +364,15 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
 
 ### 4. House style
 
-- **No emoji in the UI** — TREK's own interface is emoji-free. Use inline SVG
-  icons/marks and plain text so the plugin matches the host.
+- **No emoji — TREK is lucide-only.** TREK's own interface is emoji-free; use
+  inline SVG icons/marks (or the declarative `icon` lucide name in host-rendered
+  contributions) and plain text. ⚠️ **≥3.3.0 actively strips emoji** from **every
+  plugin-provided string the host renders in its own chrome** — `notify`
+  title/body, `tableContributor` columns/actions, trip-card badges, trip
+  warnings, map-marker labels, PDF/atlas/journal/place-detail text, etc. Only
+  real colour emoji are removed (text symbols `© ® ™ ★` and arrows survive). Your
+  own sandboxed `/ui` frame is **exempt** — but the SDK's `validate`/`dev` warn on
+  emoji (`hasEmoji`), so keep it out everywhere. (Source: `text-sanitize.ts`.)
 - **Size every inline SVG explicitly** (footgun, hit repeatedly in real builds):
   an inline `<svg>` without `width`/`height`/CSS sizing falls back to
   replaced-element defaults and — inside a flex/grid tile — **blows up to fill

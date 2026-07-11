@@ -23,29 +23,45 @@ Fidelity details:
 - The injected `ctx` **enforces exactly the permissions your manifest
   grants** — an ungranted call throws `PERMISSION_DENIED`, so you catch a
   missing grant before install.
-- ⚠️ **The dev `ctx` only implements `db`, `trips` (`getById`/`getPlaces`/
-  `getReservations`), `users`, `ws`, `log`, `config`.** As of **SDK 1.3.0**, the
-  flagship ≥3.2.1 namespaces — **`ctx.meta`, `places`, `days`, `itinerary`,
-  `costs`, `packing`, `files`, and `trips.update`** — are **NOT stubbed by
-  `trek-plugin dev`; they are `undefined`** (`cli/dev.ts` `createDevContext`). A
-  route using them throws `Cannot read properties of undefined (reading '…')`. Test
-  those flows on a **real instance**, or unit-test with `createMockHost` (which
-  *does* implement them — see below). **JS gotcha:** because the namespace is
-  `undefined`, `ctx.meta.get(…)` throws **synchronously at property access**, before
-  any Promise — a `try { await attempt(ctx.meta.get(x)) }` won't catch it (the throw
-  happens while evaluating the argument). Guard with a **thunk**: `attempt(() =>
-  ctx.meta.get(x))`, or `typeof ctx.meta === 'undefined'`. **This guard is not a
-  dev-only nicety:** the same namespaces have been observed partly `undefined`
-  on **real hosts** too — keep the thunk guard in production code and treat
-  `db:own` as the source of truth (see
-  [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
+- ⚠️ **Dev `ctx` coverage depends on the SDK version.**
+  - **SDK 1.3.0 — partial.** The dev `ctx` only implements `db`, `trips`
+    (`getById`/`getPlaces`/`getReservations`), `users`, `ws`, `log`, `config`;
+    the ≥3.2.1 namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`,
+    `packing`, `files`, `trips.update`) are **`undefined`** — a route using them
+    throws `Cannot read properties of undefined (reading '…')`. Test those flows
+    on a real instance or with `createMockHost`.
+  - **SDK 1.4.0 — FULL parity.** `createDevContext` now wraps the same
+    **grant-enforcing `createMockHost`** and overrides only `db:own` (real
+    `node:sqlite`), `ws` (captured broadcasts), and `log` (console). **Every**
+    other namespace — `costs`/`packing`/`files`/`meta`/`places`/`days`/
+    `itinerary`/`notify`/`ai`/`settings`/`scheduler`/`oauth`/`weather`/`rates`/
+    `journal`/`atlas`/`vacay`/`collections`/`collab`/`tags`/`todos`/`daynotes`/
+    `accommodations`/`reservations`/`plugins`/`events` — **works in dev** under
+    the same permission/membership/addon gates as production. So on 1.4.0 they are
+    **no longer `undefined`**, and the "they throw synchronously, guard with a
+    thunk, test on a real instance" advice **no longer applies to the dev server**.
+  - **JS gotcha (1.3.0 only):** because a namespace is `undefined`,
+    `ctx.meta.get(…)` throws **synchronously at property access** — a
+    `try { await attempt(ctx.meta.get(x)) }` won't catch it. Guard with a
+    **thunk**: `attempt(() => ctx.meta.get(x))`. **Keep this thunk guard in
+    production code regardless of SDK:** the same namespaces have been observed
+    partly `undefined` on **real hosts** too — treat `db:own` as the source of
+    truth (see [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
+    The point is that it's a **real-host** safeguard, not a dev-server one on 1.4.0.
 - `db:own` is backed by a real SQLite file at `.trek-dev/db.sqlite` when the
   Node runtime has `node:sqlite`.
 - Simulate an unauthenticated request with `?_anon=1` — an `auth: true` route
   then returns 401, mirroring the host.
-- Feed `ctx.trips` / `ctx.users` — and `ctx.config` — with fixtures: drop a
-  `dev-fixtures.json` next to the manifest. It accepts three keys: `trips`,
-  `users`, and `config` (becomes the frozen `ctx.config` in dev):
+- Feed `ctx.*` with fixtures: drop a `dev-fixtures.json` next to the manifest.
+  On **SDK 1.3.0** it accepts three keys — `trips`, `users`, `config`. On **SDK
+  1.4.0** it **IS the full `MockHostOptions` object** (`dev` passes `{ ...fx }`
+  straight into `createMockHost`), so you can seed the entire surface (`costs`,
+  `packing`, `files`, `weather`, `ai`, `rates`, `userSettings`, `tags`,
+  `journals`, `collections`, `atlasVisited`, `pluginExports`, `declaredEmits`,
+  per-trip `can`/`canEdit*` rights, addon-enable toggles, …) — see the
+  `createMockHost` options list below. It also honours **`actingUserId`**, which
+  dev **defaults to `1`** when omitted, so the documented one-arg user-bound calls
+  work on a fresh scaffold:
 
 ```json
 {
@@ -57,6 +73,24 @@ Fidelity details:
   "users": {}
 }
 ```
+
+### Firing non-route entry points in the dev server (≥ SDK 1.4.0)
+
+Routes are reachable at `/api/<path>`, but jobs, scheduled timers, event
+subscriptions, GDPR handlers and provider hooks have no URL of their own. SDK
+1.4.0's dev server adds side-effectful **`/__dev/fire/<kind>[/<name>][/<fn>]`**
+GET/POST endpoints (the browser-side mirror of `run(def)`):
+
+- `/__dev/fire/job/<id>`
+- `/__dev/fire/scheduled/<name>`
+- `/__dev/fire/event/<name>`
+- `/__dev/fire/deleteUserData` · `/__dev/fire/exportUserData`
+- `/__dev/fire/hook/<provider>/<fn>`
+
+Query params become the payload; a JSON body is used verbatim.
+`job`/`scheduled`/`event`/GDPR fire against the **userless** ctx (membership reads
+refuse, like prod); **hooks stay user-bound**. The endpoints are cross-site-guarded
+(`Sec-Fetch-Site`/`Origin`) and loopback-only.
 
 ## Dev kit — screenshots + reproducible builds in one step
 
@@ -239,12 +273,24 @@ export interface MockHostOptions {
   config?: Record<string, unknown>;         // becomes ctx.config (frozen)
   actingUserId?: number;                    // (≥3.2.1) host-bound user — required for any costs.*
   budgetAddonEnabled?: boolean;             // (≥3.2.1) default true; false → RESOURCE_FORBIDDEN
+  // (≥3.3.0 / SDK 1.4.0) more addon-enable flags (each defaults true; false → RESOURCE_FORBIDDEN):
+  journeyAddonEnabled?; atlasAddonEnabled?; vacayAddonEnabled?; collectionsAddonEnabled?; collabAddonEnabled?: boolean;
+  // (≥3.3.0) inter-plugin + per-user + broker fixtures:
+  pluginExports?; declaredEmits?; userSettings?; tags?; journals?; journalEntries?; collections?;
+  atlasVisited?; atlasBucketList?; vacayPlan?; categories?; weatherResult?; ratesResult?; aiText?; aiResults?; oauthAccessToken?;
   /** Fixtures keyed by trip id; `members` gates access like the real host. */
   trips?: Record<number, { members: number[]; data?: unknown;
                            places?: unknown[]; reservations?: unknown[];
                            costs?: unknown[]; canEditCosts?: boolean;      // (≥3.2.1)
                            days?: unknown[]; assignments?: unknown[];      // (≥3.2.1)
-                           packing?: unknown[]; files?: unknown[] }>;      // (≥3.2.1) ctx.packing/files.list
+                           packing?: unknown[]; files?: unknown[];         // (≥3.2.1) ctx.packing/files.list
+                           accommodations?; bags?; todos?; daynotes?;      // (≥3.3.0)
+                           notes?; polls?; messages?;                      // (≥3.3.0) collab
+                           canEditPlaces?; canEditDays?; canEditTrip?: boolean; // (≥3.3.0) write gates
+                           /** (≥3.3.0) app-right gate keyed by right name:
+                            *  member_manage, reservation_edit, packing_edit, collab_edit,
+                            *  file_upload/file_edit/file_delete (todos ride on packing_edit) */
+                           can?: Record<string, boolean> }>;
   users?: Record<number, unknown>;
   /** Canned db.query results, keyed by the EXACT sql string. */
   queryResults?: Record<string, unknown[]>;
@@ -252,16 +298,44 @@ export interface MockHostOptions {
 
 export interface MockHost {
   ctx: PluginContext;
-  calls: { method: string; args: unknown[] }[];        // names of permission-checked calls
-                                                       // (db/trips/users/ws — not log);
-                                                       // args is always [] — assert on method names only
+  userlessCtx: PluginContext;                          // (≥3.3.0) the ctx a job/scheduled/event/GDPR handler gets — NO acting user
+  calls: { method: string; args: unknown[] }[];        // permission-checked call names (db/trips/users/ws — not log).
+                                                       // args is [] for those; (≥3.3.0) settings.get/plugins.call/events.emit push REAL args
   logs: { level: string; msg: string }[];
-  broadcasts: { kind: 'trip' | 'user'; target: number;
-                event: string; data: unknown }[];
+  broadcasts: { kind: 'trip' | 'user'; target: number; event: string; data: unknown }[];
+  emitted: { name: string; payload: unknown }[];       // (≥3.3.0) ctx.events.emit records
+  notifications: unknown[];                            // (≥3.3.0) ctx.notify.send records
+  scheduled: Map<string, unknown>;                     // (≥3.3.0) ctx.scheduler timers
+  run(def): PluginDriver;                              // (≥3.3.0) fire the plugin's OWN entry points — see below
 }
 
 export function createMockHost(opts?: MockHostOptions): MockHost;
 ```
+
+### Driving the plugin's own handlers — `run(def)` (≥3.3.0 / SDK 1.4.0)
+
+`createMockHost(...).run(def)` returns a **`PluginDriver`** that fires the
+plugin's **own** entry points against the mock ctx — the "assert what the plugin
+DID" half of a unit test:
+
+```js
+const h = createMockHost({ grants: ['jobs:run', 'db:own'] })
+const drv = h.run(def)
+await drv.load(); await drv.unload()
+await drv.route(0, req)                 // or route({ method:'GET', path:'/status' }, req)
+await drv.job('refresh')               // runs against userlessCtx
+await drv.scheduled('digest', payload) // userless
+await drv.event('place:created', payload)          // userless
+await drv.pluginEvent('other-plugin', 'rate.updated', payload) // userless
+await drv.deleteUserData(42); await drv.exportUserData(42)     // userless GDPR
+await drv.hook('placeDetailProvider', 'getDetails', placeId)  // user-bound
+```
+
+**Routes and hooks run user-bound; `job`/`scheduled`/`event`/`pluginEvent`/GDPR
+run against `userlessCtx`** — so a membership read from a background job fails in
+test exactly as it would in production. Use it as the **primary way** to test
+jobs, scheduled timers, event/plugin-event subscriptions, GDPR export/delete, and
+provider hooks.
 
 Example:
 
@@ -284,9 +358,21 @@ Notes:
 
 - The mock db is a **recorder**, not a database: configure `queryResults` for
   canned rows (keyed by the exact SQL string); use an integration test (or the
-  dev server's real SQLite) for real SQL.
+  dev server's real SQLite) for real SQL. **(≥3.3.0) it also enforces the host's
+  statement guards** — `query`/`exec`/`migrate` reject `FORBIDDEN_SQL`
+  (`ATTACH`/`DETACH`/`VACUUM`/`PRAGMA`/`RECURSIVE`/`LOAD_EXTENSION`) and > 100k-char
+  SQL, and **`db.tx(ops)` is implemented** (≤ 100 ops, each SQL-guarded,
+  transaction-control keywords `BEGIN`/`COMMIT`/`ROLLBACK`/`SAVEPOINT`/`RELEASE`/
+  `END` rejected even behind leading comments; reads resolve from `queryResults`,
+  writes report `{changes:0}`). So tests catch disallowed SQL and exercise
+  `db.tx` batches without a real database.
 - `broadcasts` collects `ws.broadcastTo*` calls so you can assert on events
-  without a socket.
+  without a socket. **(≥3.3.0) both are target-gated like prod:** `broadcastToTrip`
+  refuses without an acting user and membership-checks the trip; `broadcastToUser`
+  allows only the acting user themselves. `users.getById` returns **only public
+  columns** (`id/username/display_name/avatar`, never email/role) and only for
+  someone the acting user can see (self or a co-membered trip) — foreign ids
+  throw `RESOURCE_FORBIDDEN`.
 - `calls` records the attempt **even when the grant is missing** (the entry is
   pushed before the permission check throws), so a `PERMISSION_DENIED` call still
   appears in `calls`.
@@ -295,6 +381,31 @@ Notes:
   `budget_edit` for `create`; `budgetAddonEnabled: false` simulates the addon
   being off (both → `RESOURCE_FORBIDDEN`). Cover happy-path, missing-grant,
   missing-`budget_edit`, and addon-off cases.
+- **(≥3.3.0) `userlessCtx`** is the ctx a job / scheduled task / event
+  subscription / GDPR handler receives — bound to **no acting user**. Every
+  user-bound read/write on it throws `RESOURCE_FORBIDDEN` ("this call requires an
+  authenticated user context"); it shares the same fixtures/grants/recorders.
+  `run()`'s `job`/`scheduled`/`event`/`pluginEvent`/`deleteUserData`/
+  `exportUserData` all use it — so test that background handlers **degrade
+  gracefully without a user** (fall back to `ctx.config`/`db:own`, not user-bound
+  reads).
+- **(≥3.3.0) `notify.send` is fully modelled:** title/body emoji-stripped (an
+  all-emoji title collapses to `''` and is **rejected**), `title` ≤ 200 / `body`
+  ≤ 1000 required, `scope` must be `'user'`/`'trip'`, a `'user'` target must
+  equal the acting user (else `RESOURCE_FORBIDDEN`), a `'trip'` target is
+  membership-checked, `link` must be an in-app `/…` path (not `//…`, ≤ 512).
+  Assert on the **`notifications`** array.
+- **(≥3.3.0) member management + per-trip rights:** `addMember`/`removeMember`
+  need `db:write:members` + the fixture's `can.member_manage`, verify the target
+  exists, no-op for owner/existing member (`joined:false`), and refuse removing
+  the owner. Set `canEditPlaces`/`canEditDays`/`canEditTrip` or a `can` entry
+  (`reservation_edit`/`packing_edit`/`collab_edit`/`file_*`) to `false` to test
+  the permission-denied write paths.
+- **(≥3.3.0) addon-off pattern generalises:** each of `budgetAddonEnabled` /
+  `journeyAddonEnabled` / `atlasAddonEnabled` / `vacayAddonEnabled` /
+  `collectionsAddonEnabled` / `collabAddonEnabled` (all default true) → set
+  `false` to prove your plugin degrades when the addon is disabled
+  (`RESOURCE_FORBIDDEN`).
 - Mock ctx id is `mock-plugin`; `config` is frozen like the real one.
 - Differences vs the real host worth knowing: the mock's `trips.getById`
   honors the `asUserId` argument for membership checks (that's the point of
