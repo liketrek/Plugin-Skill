@@ -97,10 +97,10 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `http:outbound` | Marker: plugin does outbound HTTP | Satisfies the "egress required" rule but grants **no host** by itself. |
 | `http:outbound:<host>` | Opens `<host>` in the runtime egress guard **and** the iframe CSP `connect-src` | This is what actually allows a request. |
 
-> **≥3.3.0 roughly triples the permission surface** (~22 → ~50+ grants). All rows
-> tagged **(≥3.3.0)** above are from the unreleased 3.3.0 line (PR #1472); on
-> ≤3.2.2 hosts they are unknown strings and **fail manifest validation**, so
-> only declare them once you target 3.3.0. Two families to note: the **broker
+> **≥3.3.0 roughly triples the permission surface** (~22 → ~50+ grants). Every row
+> tagged **(≥3.3.0)** above landed in TREK 3.3.0; on **≤3.2.1** hosts they are
+> unknown strings and **fail manifest validation**, so declare them only when you
+> target 3.3.0 (or gate a separately-published entry). Two families to note: the **broker
 > permissions** (`ai:invoke` / `notify:send` / `oauth:client` / `rates:read` /
 > `weather:read` / `jobs:run`) are host services, not DB scopes — `rates`/
 > `weather`/`ai` are tenant-free while `notify`/`oauth` are acting-user-scoped;

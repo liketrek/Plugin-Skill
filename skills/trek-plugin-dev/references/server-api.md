@@ -243,9 +243,9 @@ export interface PluginContext {
 
 > **Treat every ≥3.2.1 namespace as optional — even on a real host.** The
 > optional namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`,
-> `packing`, `files`, `trips.update`) are not just `undefined` under
-> `trek-plugin dev` (SDK 1.3.0, see [testing.md](testing.md)) — they have been
-> observed **partly `undefined` on real production hosts** as well: a live
+> `packing`, `files`, `trips.update`) have been observed **partly `undefined` on
+> real production hosts** (independent of the dev server, which has full parity on
+> the current SDK — see [testing.md](testing.md)): a live
 > route using `ctx.meta.set(…)` crashed with `Cannot read properties of
 > undefined (reading 'set')`. So never build a feature that *hard-requires*
 > them. The robust pattern:

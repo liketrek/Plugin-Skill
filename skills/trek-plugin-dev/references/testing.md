@@ -23,45 +23,37 @@ Fidelity details:
 - The injected `ctx` **enforces exactly the permissions your manifest
   grants** — an ungranted call throws `PERMISSION_DENIED`, so you catch a
   missing grant before install.
-- ⚠️ **Dev `ctx` coverage depends on the SDK version.**
-  - **SDK 1.3.0 — partial.** The dev `ctx` only implements `db`, `trips`
-    (`getById`/`getPlaces`/`getReservations`), `users`, `ws`, `log`, `config`;
-    the ≥3.2.1 namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`,
-    `packing`, `files`, `trips.update`) are **`undefined`** — a route using them
-    throws `Cannot read properties of undefined (reading '…')`. Test those flows
-    on a real instance or with `createMockHost`.
-  - **SDK 1.4.0 — FULL parity.** `createDevContext` now wraps the same
-    **grant-enforcing `createMockHost`** and overrides only `db:own` (real
-    `node:sqlite`), `ws` (captured broadcasts), and `log` (console). **Every**
-    other namespace — `costs`/`packing`/`files`/`meta`/`places`/`days`/
-    `itinerary`/`notify`/`ai`/`settings`/`scheduler`/`oauth`/`weather`/`rates`/
-    `journal`/`atlas`/`vacay`/`collections`/`collab`/`tags`/`todos`/`daynotes`/
-    `accommodations`/`reservations`/`plugins`/`events` — **works in dev** under
-    the same permission/membership/addon gates as production. So on 1.4.0 they are
-    **no longer `undefined`**, and the "they throw synchronously, guard with a
-    thunk, test on a real instance" advice **no longer applies to the dev server**.
-  - **JS gotcha (1.3.0 only):** because a namespace is `undefined`,
-    `ctx.meta.get(…)` throws **synchronously at property access** — a
-    `try { await attempt(ctx.meta.get(x)) }` won't catch it. Guard with a
-    **thunk**: `attempt(() => ctx.meta.get(x))`. **Keep this thunk guard in
-    production code regardless of SDK:** the same namespaces have been observed
-    partly `undefined` on **real hosts** too — treat `db:own` as the source of
-    truth (see [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
-    The point is that it's a **real-host** safeguard, not a dev-server one on 1.4.0.
+- **Dev `ctx` has FULL parity (SDK 1.4.0, current).** `createDevContext` wraps the
+  same **grant-enforcing `createMockHost`** and overrides only `db:own` (real
+  `node:sqlite`), `ws` (captured broadcasts), and `log` (console). **Every** other
+  namespace — `costs`/`packing`/`files`/`meta`/`places`/`days`/`itinerary`/
+  `notify`/`ai`/`settings`/`scheduler`/`oauth`/`weather`/`rates`/`journal`/`atlas`/
+  `vacay`/`collections`/`collab`/`tags`/`todos`/`daynotes`/`accommodations`/
+  `reservations`/`plugins`/`events` — **works in dev** under the same
+  permission/membership/addon gates as production.
+  - *Historical (SDK ≤ 1.3.x):* the dev `ctx` implemented only `db`/`trips`/
+    `users`/`ws`/`log`/`config`, leaving the ≥3.2.1 namespaces **`undefined`** —
+    a route using them threw `Cannot read properties of undefined` (**synchronously
+    at property access**, so `await attempt(ctx.meta.get(x))` didn't catch it; you
+    needed a thunk `attempt(() => ctx.meta.get(x))`). Irrelevant on the current SDK.
+  - ⚠️ **Keep the thunk-guard pattern in production code regardless** — the same
+    namespaces have been observed partly `undefined` on **real hosts** too, so
+    treat `db:own` as the source of truth and mirror to `ctx.meta` best-effort
+    (see [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
+    It's a **real-host** safeguard, not a dev-server one.
 - `db:own` is backed by a real SQLite file at `.trek-dev/db.sqlite` when the
   Node runtime has `node:sqlite`.
 - Simulate an unauthenticated request with `?_anon=1` — an `auth: true` route
   then returns 401, mirroring the host.
-- Feed `ctx.*` with fixtures: drop a `dev-fixtures.json` next to the manifest.
-  On **SDK 1.3.0** it accepts three keys — `trips`, `users`, `config`. On **SDK
-  1.4.0** it **IS the full `MockHostOptions` object** (`dev` passes `{ ...fx }`
-  straight into `createMockHost`), so you can seed the entire surface (`costs`,
-  `packing`, `files`, `weather`, `ai`, `rates`, `userSettings`, `tags`,
-  `journals`, `collections`, `atlasVisited`, `pluginExports`, `declaredEmits`,
-  per-trip `can`/`canEdit*` rights, addon-enable toggles, …) — see the
-  `createMockHost` options list below. It also honours **`actingUserId`**, which
-  dev **defaults to `1`** when omitted, so the documented one-arg user-bound calls
-  work on a fresh scaffold:
+- Feed `ctx.*` with fixtures: drop a `dev-fixtures.json` next to the manifest. It
+  **IS the full `MockHostOptions` object** (SDK 1.4.0 passes `{ ...fx }` straight
+  into `createMockHost`), so you can seed the entire surface (`costs`, `packing`,
+  `files`, `weather`, `ai`, `rates`, `userSettings`, `tags`, `journals`,
+  `collections`, `atlasVisited`, `pluginExports`, `declaredEmits`, per-trip
+  `can`/`canEdit*` rights, addon-enable toggles, …) — see the `createMockHost`
+  options list below. It also honours **`actingUserId`**, which dev **defaults to
+  `1`** when omitted, so the documented one-arg user-bound calls work on a fresh
+  scaffold. (SDK ≤ 1.3.x accepted only `trips`/`users`/`config`.)
 
 ```json
 {

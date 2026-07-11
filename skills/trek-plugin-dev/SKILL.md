@@ -56,9 +56,8 @@ npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0
 Update flow: bump `version` in the manifest, re-pack, new `vX.Y.Z` tag/release
 (asset attached **before** `entry` — else `artifact not found`), then
 `entry --merge` onto the existing registry file (newest version first) and PR it.
-For `trip-page` (broken local preflight, SDK ≤ 1.3.x) there's a hand-edit path —
-see "Updating a published plugin" in
-[references/publishing.md](references/publishing.md).
+There's also a hand-edit path for updating an entry by hand — see "Updating a
+published plugin" in [references/publishing.md](references/publishing.md).
 
 ## Build the UI / store shot *with* the user, not for them
 
@@ -151,11 +150,11 @@ with no iframe. See [references/server-api.md](references/server-api.md).
    `ctx.meta` stores the plugin's own namespaced data on a trip/place/day (reads
    need trip access, writes the entity's edit permission). **Heads-up: these
    ≥3.2.1 namespaces (`meta`/`places`/`days`/`itinerary`/`costs`/`packing`/`files`/
-   `trips.update`) are `undefined` in `trek-plugin dev` (SDK 1.3.0) — and have
-   been observed partly `undefined` on real hosts too.** Treat them all as
-   optional: `db:own` as source of truth, `ctx.meta` only a best-effort mirror,
-   every optional call behind a thunked guard (`attempt(() => ctx.meta.set(…))`
-   — the thunk also catches the synchronous property throw). See
+   `trips.update`) have been observed partly `undefined` on real hosts** (the dev
+   server has full parity on the current SDK). Treat them all as optional: `db:own`
+   as source of truth, `ctx.meta` only a best-effort mirror, every optional call
+   behind a thunked guard (`attempt(() => ctx.meta.set(…))` — the thunk also
+   catches the synchronous property throw). See
    [server-api.md](references/server-api.md) and
    [testing.md](references/testing.md). Budget amount key is **`total_price`**,
    not `amount` (unknown keys are silently dropped → saves 0). **(≥3.3.0) the
@@ -206,7 +205,7 @@ with no iframe. See [references/server-api.md](references/server-api.md).
     host reads real routes off the loaded `definePlugin` object; a page's nav
     entry uses top-level `name` as its label but a **fixed `Blocks` icon** — the
     manifest `icon` is *not* used for nav (only on the Admin/store card).
-13. **The UI frame renders no bundled or external images/fonts (≤3.2.2).** It runs
+13. **The UI frame renders no bundled or external images/fonts (≤3.2.1).** It runs
     at an opaque origin under a strict CSP (`img-src 'self' data: blob:`,
     `font-src 'self' data:`) where `'self'` matches nothing — so relative file
     paths (`./logo.png`) and external URLs don't load; only inline SVG,
@@ -214,7 +213,7 @@ with no iframe. See [references/server-api.md](references/server-api.md).
     inline SVG (like koffi). **≥3.3.0 re-enables your OWN bundled assets** via an
     own-path CSP source (`./logo.png`, bundled `.woff2`, a multi-file Vite/React
     build load without inlining — external CDNs still blocked); keep inlining as
-    the portable path for ≤3.2.2. `trek-plugin dev` applies **no** CSP/sandbox, so
+    the portable path for ≤3.2.1. `trek-plugin dev` applies **no** CSP/sandbox, so
     an image that works in `dev` can still fail in the real host — verify against
     the real frame. See [references/client-bridge.md](references/client-bridge.md).
 

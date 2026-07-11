@@ -53,7 +53,7 @@ immutable in practice; fix things in a new version.
 >    `.gitattributes` with `* text=auto eol=lf` — Windows `core.autocrlf=true`
 >    otherwise changes file bytes) and **the SDK's zip layer itself** (entry
 >    mtimes/ordering/compressor — nothing you can fix in the plugin; if two
->    machines must agree, pin the SDK version: `npx trek-plugin-sdk@1.3.1 pack`).
+>    machines must agree, pin an exact SDK version, e.g. `npx trek-plugin-sdk@1.4.0 pack`).
 
 ## Registry entry schema (`registry/plugins/<id>.json`)
 
@@ -69,7 +69,7 @@ Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
 | `repo` | `owner/name` (GitHub). Source of truth for the code. |
 | `homepage` | Optional URI. |
 | `tags` | Optional; up to 8 slugs matching `^[a-z0-9-]{2,24}$`. |
-| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — `trip-page` is in the registry `main` schema's `type` enum (v3-2-1 was merged), so the **live CI** validates it. ⚠️ **But the SDK ≤ 1.3.x local `preflight` still rejects `trip-page`** (`preflight.ts:50` hardcodes the old 3-type list) — so `preflight`/`publish` fail on it locally even though CI would pass. Use `submit` or `publish --no-preflight` (see [cli.md](cli.md)). **Fixed in SDK 1.4.0** (`preflight.ts:50` includes `trip-page`) — no workaround needed on ≥1.4.0. |
+| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — all four are in the registry schema's `type` enum and validated by CI and (on the current SDK) local `preflight`. (Historical: SDK ≤ 1.3.x `preflight` wrongly rejected `trip-page`; fixed in 1.4.0.) |
 | `authorPublicKey` | Optional base64 **raw Ed25519** public key (the 32-byte key; schema allows 40–120 chars). Stable across versions; TOFU-pinned on first install. |
 | `reviewedAt`, `boundOwner` | **CI-maintained — never set these yourself.** |
 | `versions` | Array, min 1, **newest first**. |
@@ -289,12 +289,9 @@ PATH (Windows: `winget install --id GitHub.cli -e`, then reopen the shell).
    `artifact not found` if it doesn't exist yet.
 3. `trek-plugin entry --repo <o/n> --tag <vX.Y.Z> --merge registry/plugins/<id>.json --out registry/plugins/<id>.json`
    (prepends; array stays newest-first) — or `publish`, which handles it.
-   ⚠️ **`trip-page`: `preflight`/`publish` reject the type on SDK ≤ 1.3.x**
-   (see the schema table above) — use `submit`, `publish --no-preflight`, or the
-   hand-edit path below.
 4. PR the updated **single** file.
 
-### Hand-editing an existing entry (works for every type, required for `trip-page` on SDK ≤ 1.3.x)
+### Hand-editing an existing entry (works for every type)
 
 Start from the **merged** file in TREK-Plugins `main` (not a stale local copy),
 then:
