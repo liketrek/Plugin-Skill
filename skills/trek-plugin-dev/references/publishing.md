@@ -13,7 +13,7 @@ that adds/updates exactly that file. No server, no account.
 trek-plugin.json      # manifest
 package.json          # "type": "commonjs"; SDK as devDependency at most
 server/index.js       # built server entry (required)
-client/               # built frontend (page/widget, and trip-page ≥3.2.1)
+client/               # built frontend (page/widget/trip-page)
 README.md             # must pass the quality gate (below)
 docs/screenshot.png   # store card image — committed, NOT shipped in the zip
 ```
@@ -37,23 +37,19 @@ immutable in practice; fix things in a new version.
 > Run **`git fetch origin --tags`** between the release and `entry`, or pass
 > `--commit <sha>` to override.
 
-> **Artifacts are NOT byte-reproducible — take `sha256`/`size` from the
-> uploaded asset, never from a local re-pack.** `pack` output differs between
-> machines *and even SDK patch versions*: identical source packed with SDK
-> 1.3.0 vs 1.3.1 produced a different sha256 **and** size (79 918 vs 79 830 B)
-> with a correct LF `.gitattributes` in place — zip metadata/mtimes/compression,
-> not your files (confirmed on a real build). Consequences:
->
-> 1. The registry pin must describe **the exact bytes attached to the GitHub
->    release**: upload the zip you packed, then build the entry **after** the
->    upload against that same artifact — or verify by hand:
->    `curl -fsSL <downloadUrl> | sha256sum` and the asset's exact byte count.
->    A hash from "the same source, packed again" will generally **not** match.
-> 2. Two known nondeterminism sources: **CRLF checkouts** (fix: commit a
->    `.gitattributes` with `* text=auto eol=lf` — Windows `core.autocrlf=true`
->    otherwise changes file bytes) and **the SDK's zip layer itself** (entry
->    mtimes/ordering/compressor — nothing you can fix in the plugin; if two
->    machines must agree, pin an exact SDK version, e.g. `npx trek-plugin-sdk@1.4.0 pack`).
+> **Take `sha256`/`size` from the uploaded asset, never from a local re-pack.**
+> The registry pin must describe **the exact bytes attached to the GitHub
+> release**: upload the zip you packed, then build the entry **after** the
+> upload against that same artifact — or verify by hand:
+> `curl -fsSL <downloadUrl> | sha256sum` and the asset's exact byte count.
+> The SDK's zip writer stamps **fixed mod dates (1980-01-01)** and deterministic
+> compression, so a same-machine, same-SDK re-pack of an unchanged tree is
+> byte-identical — but re-packs elsewhere can still differ: **entry order** comes
+> from unsorted directory walks (filesystem-dependent), the **pack-time-inlined
+> design kit** differs per SDK version (`injectTrekUi` rewrites every `.html`),
+> and **CRLF checkouts** change file bytes (fix: commit a `.gitattributes` with
+> `* text=auto eol=lf`). Never assume a local hash matches the released asset —
+> check the asset.
 
 ## Registry entry schema (`registry/plugins/<id>.json`)
 
@@ -65,11 +61,11 @@ Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
 | `id` | `^[a-z][a-z0-9-]{2,39}$`; must equal the filename (without `.json`). |
 | `name` | 2–60 chars. |
 | `author` | 1–80 chars. |
-| `description` | 8–200 chars — **the cap binds the *entry*, not the manifest, and the two need not match.** Manifest parity compares only `id`/`version`/`type`/`apiVersion`/`nativeModules` (+ dependency fields), never `description` — a merged entry with a short description alongside a longer manifest description is confirmed fine. ⚠️ But `buildEntry` copies the manifest description **verbatim**, and `validate`/`pack` don't enforce the cap — so a > 200-char manifest description sails through pack + release and only then **fails registry CI** (`description must NOT have more than 200 characters`). Either keep `trek-plugin.json`'s description ≤ 200 chars, or hand-shorten the entry's `description` after `entry` (allowed). |
+| `description` | 5–200 chars — **the cap binds the *entry*, not the manifest, and the two need not match.** Manifest parity compares only `id`/`version`/`type`/`apiVersion`/`nativeModules` (+ dependency fields), never `description` — a merged entry with a short description alongside a longer manifest description is confirmed fine. ⚠️ But `buildEntry` copies the manifest description **verbatim**, and `validate`/`pack` don't enforce the cap — so a > 200-char manifest description sails through pack + release and only then **fails registry CI** (`description must NOT have more than 200 characters`). Either keep `trek-plugin.json`'s description ≤ 200 chars, or hand-shorten the entry's `description` after `entry` (allowed). |
 | `repo` | `owner/name` (GitHub). Source of truth for the code. |
 | `homepage` | Optional URI. |
 | `tags` | Optional; up to 8 slugs matching `^[a-z0-9-]{2,24}$`. |
-| `type` | `integration` \| `page` \| `widget` \| `trip-page` **(≥3.2.1)** — all four are in the registry schema's `type` enum and validated by CI and (on the current SDK) local `preflight`. (Historical: SDK ≤ 1.3.x `preflight` wrongly rejected `trip-page`; fixed in 1.4.0.) |
+| `type` | `integration` \| `page` \| `widget` \| `trip-page` — all four are in the registry schema's `type` enum, validated by CI and local `preflight` alike. |
 | `authorPublicKey` | Optional base64 **raw Ed25519** public key (the 32-byte key; schema allows 40–120 chars). Stable across versions; TOFU-pinned on first install. |
 | `reviewedAt`, `boundOwner` | **CI-maintained — never set these yourself.** |
 | `versions` | Array, min 1, **newest first**. |
@@ -91,8 +87,9 @@ Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
 | `nativeModules` | Literally `false` (const). |
 | `signature` | Optional base64 **raw Ed25519** signature (the 64-byte sig) over the artifact bytes; requires `authorPublicKey` on the entry. |
 | `publishedAt` | Optional ISO date-time. |
-| `requiredAddons` **(registry ≥ PR #13)** | Optional array (≤ 16) of addon ids (`^[a-z][a-z0-9_]{1,39}$`, e.g. `["budget"]`) that must be enabled in TREK for this version to activate. **Must mirror the manifest** (parity gate). |
-| `pluginDependencies` **(registry ≥ PR #13)** | Optional array (≤ 32) of `{ id, version }` — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` a range string ≤ 100 chars). **Must mirror the manifest** (parity gate). |
+| `operatorEgress` | Optional boolean; `entry` emits it **only when true**. **Must mirror the manifest** (parity gate; `preflight` replays this one). Allows an empty `egress[]` — the admin supplies the hosts at runtime. |
+| `requiredAddons` | Optional array (≤ 16) of addon ids (`^[a-z][a-z0-9_]{1,39}$`, e.g. `["budget"]`) that must be enabled in TREK for this version to activate. **Must mirror the manifest** (parity gate). |
+| `pluginDependencies` | Optional array (≤ 32) of `{ id, version }` — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` a range string ≤ 100 chars). **Must mirror the manifest** (parity gate). |
 
 `trek-plugin entry --repo <o/n> --tag <vX.Y.Z>` computes all derived fields;
 `--merge existing.json` prepends a new version for updates. The canonical
@@ -100,16 +97,20 @@ shape is `schema/example-entry.json`; the authority is
 `schema/plugin-entry.schema.json` (additionalProperties: false — no extra
 keys).
 
-> **Trap — `requiredAddons`/`pluginDependencies` are registry-ahead-of-SDK.** The
-> registry (TREK-Plugins `main`, PR #13) added these fields and a **parity gate**,
-> but the v3-2-1 SDK's `entry`/`buildEntry` does **not** copy them from the manifest
-> into the entry, and `validateManifest` silently ignores unknown manifest keys. So
-> if you declare `requiredAddons`/`pluginDependencies` in `trek-plugin.json`, you
-> must **hand-add the identical arrays to the entry** or the parity gate fails
+> **Trap — the SDK's `entry` does NOT copy `requiredAddons`/`pluginDependencies`.**
+> `buildEntry` fills only `homepage`/`tags`/`authorPublicKey` beyond the core
+> fields, so if you declare `requiredAddons`/`pluginDependencies` in
+> `trek-plugin.json` you must **hand-add the identical arrays to the entry** or
+> the registry's parity gate fails
 > (`manifest requiredAddons != entry requiredAddons`). If you use neither, both
-> default to `[]` and you're unaffected. TREK the app does **not** yet enforce these
-> at activation (no references in the 3.2.1 server) — they're declarative index
-> metadata so the registry can express addon + inter-plugin deps.
+> default to `[]` and you're unaffected. **TREK enforces these at activation**:
+> a plugin whose required addon is disabled (or whose plugin dependency is
+> missing/mismatched) can't activate, disabling an addon cascades to dependent
+> plugins, dependency cycles are rejected, and installing from the registry
+> **auto-installs declared plugin dependencies** (`dependencies.ts`,
+> `registry.installWithDependencies`). ⚠️ Local `preflight` does **not** replay
+> the dependency-parity gate — a declared field passes `publish` locally and
+> fails only in CI, so hand-check the entry before PRing.
 
 ## CI gates
 
@@ -131,18 +132,17 @@ runs schema/format checks only.)
 | JSON schema | Entry violates `plugin-entry.schema.json` (incl. unknown keys) | Regenerate with `trek-plugin entry` |
 | id ↔ filename | `id` ≠ filename or not a valid slug | Rename file / fix id |
 | Owner binding | Existing id repointed to a different owner (`OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge) | Only the bound owner updates it; an owner change needs a maintainer to re-run CI with `ALLOW_OWNER_CHANGE=1` |
-| Homoglyph / mixed-script | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek U+0370–037F. Only fires on a *mix* — an all-Cyrillic name, or a Latin+common-Greek (Α/Ο/α…) spoof, is **not** caught | Use plain ASCII |
+| Homoglyph / mixed-script | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek (U+0370–03FF, the full block — Latin+Greek look-alikes like Α/Ο/α **are** caught). Only fires on a *mix*; an all-Cyrillic name is not caught | Use plain ASCII |
 | Release tag | `gitTag` doesn't exist or doesn't resolve to `commitSha` | Push the tag; re-run `entry` |
 | Manifest parity | `id`/`version`/`type`/`apiVersion`/`nativeModules` in the repo's `trek-plugin.json` **at `commitSha`** differ from the entry (or `nativeModules: true`) | Align manifest and entry; retag |
-| Dependency parity **(registry ≥ PR #13)** | The entry's `requiredAddons` or `pluginDependencies` (sorted/normalized) differ from the manifest's at `commitSha` — including the common case where you declared them in the manifest but the SDK's `entry` didn't copy them, so the entry has `[]` | Hand-add the identical `requiredAddons`/`pluginDependencies` arrays to the entry |
+| Dependency parity | The entry's `requiredAddons` or `pluginDependencies` (sorted/normalized) differ from the manifest's at `commitSha` — including the common case where you declared them in the manifest but the SDK's `entry` didn't copy them, so the entry has `[]` | Hand-add the identical `requiredAddons`/`pluginDependencies` arrays to the entry |
 | Artifact hash / over-size | Downloaded asset's SHA-256 ≠ `sha256`, or the bytes are **> ~4 KB larger** than declared `size` (`buf.length > size + 4096`) — no lower-bound check; the 1–50 MB range is a separate *schema* check on the declared `size` | Never touch released assets; cut a new version |
 | Native binary scan | `.node`, `binding.gyp`, or a `prebuild(s)/` path inside the artifact (**zip or tar.gz**) | Remove native deps; repack |
-| Egress | Any `http:outbound*` permission but `egress[]` missing/empty, or `egress` contains a bare `*` | Declare explicit hosts |
+| Egress | Any `http:outbound*` permission with `egress[]` missing/empty **and `operatorEgress` not `true`**; a bare `*` in `egress`; `operatorEgress` parity mismatch vs the manifest; or `operatorEgress` without an `http:outbound` permission | Declare explicit hosts, or set `operatorEgress: true` in **both** manifest and entry |
 
 **No signature gate.** `validate-entry.mjs` does **not** verify signatures — only
 the SHA-256 pin. A `signature`/`authorPublicKey` is shape-checked by the schema
-and verified by **TREK at install time (TOFU)**, not in PR CI. (The registry
-README claims it's "verified when present"; the code doesn't do it.)
+and verified by **TREK at install time (TOFU)**, not in PR CI.
 
 (Reserved ids `registry`, `install`, `rescan` are refused by **TREK's install
 loader** — they collide with admin API route segments — not by the CI script.
@@ -211,9 +211,11 @@ public key, each `signature` is base64 of the raw 64-byte signature over the
 artifact bytes. Verified offline, key pinned on first install (TOFU). **Registry
 CI does not verify it — only TREK at install time does.**
 
-Use the SDK (do **not** hand-run `minisign` — its `.pub`/`.minisig` payloads are
-the wrong length, 42/74 bytes, and fail the SDK/server's `length === 32/64`
-checks):
+Use the SDK (one command, consistent format). TREK's install-time verifier also
+accepts minisign-framed payloads — a 42-byte `Ed`+keyid `.pub` and 74-byte
+`.minisig` signatures, legacy and prehashed alike — but **mixing formats across
+versions trips the `entry --merge`/`submit` key-equality check** (a plain string
+compare), so pick one format and stay with it:
 
 ```bash
 npx trek-plugin-sdk keygen        # once → ~/.trek-plugin/signing.key (BACK IT UP)
@@ -232,18 +234,16 @@ Unsigned plugins install on sha256 alone.
 ## When `submit` / `publish` can't open the PR (do it by hand)
 
 The automated PR step can fail with **`error: remote upstream already exists`**
-(still present as of TREK 3.2.1 / SDK 1.3.0 — `submit.ts` is unchanged).
-Cause (confirmed in `src/cli/submit.ts`): `submit` clones your fork with
+(still present in SDK 1.4.0, `submit.ts`): `submit` clones your fork with
 `gh repo clone`, which auto-adds an `upstream` remote for a fork, then
 unconditionally runs `git remote add upstream …` again. The **release itself is
 already done** at that point — only the PR is missing. Open the one-file PR
 manually:
 
 ```bash
-# 0. The GitHub release for the tag — WITH plugin.zip attached — must already
-#    exist: `entry` verifies against the release asset and fails with
-#    "artifact not found" if the asset isn't uploaded yet. Order is always
-#    pack → release (asset attached) → entry, never entry first.
+# 0. `entry` hashes your LOCAL plugin.zip (never downloads) — make sure the
+#    file next to you is the exact one you uploaded as the release asset
+#    ("artifact not found" = the local zip is missing; run `pack`).
 # 1. Generate the entry INSIDE the plugin repo — `entry` resolves commitSha via
 #    `git rev-parse <tag>`, so the tag must be local here. If gh created the
 #    tag remotely, fetch it first:
@@ -284,9 +284,9 @@ PATH (Windows: `winget install --id GitHub.cli -e`, then reopen the shell).
 ## Updating a published plugin
 
 1. Bump `version` in `trek-plugin.json`; develop; re-`pack`.
-2. New tag + GitHub release `vX.Y.Z` with the new `plugin.zip` **attached before
-   anything else** — `entry` verifies the release asset and fails with
-   `artifact not found` if it doesn't exist yet.
+2. New tag + GitHub release `vX.Y.Z` with the new `plugin.zip` attached.
+   (`entry` hashes your **local** zip — keep the uploaded asset and the local
+   file identical; `preflight` is what verifies the released bytes.)
 3. `trek-plugin entry --repo <o/n> --tag <vX.Y.Z> --merge registry/plugins/<id>.json --out registry/plugins/<id>.json`
    (prepends; array stays newest-first) — or `publish`, which handles it.
 4. PR the updated **single** file.
