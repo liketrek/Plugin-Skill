@@ -71,7 +71,7 @@ Top level — required: `id`, `name`, `author`, `description`, `repo`, `type`,
 | `versions` | Array, min 1, **newest first**. |
 
 Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
-`sha256`, `trek`, `minTrekVersion`, `size`, `apiVersion`, `nativeModules`.
+`sha256`, `trek`, `size`, `apiVersion`, `nativeModules`.
 
 | Field | Constraints |
 |---|---|
@@ -80,9 +80,8 @@ Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
 | `commitSha` | 40-hex commit the tag resolves to (tags are movable; the commit pins what was reviewed). |
 | `downloadUrl` | Must start with `https://github.com/`, `https://codeload.github.com/`, or `https://objects.githubusercontent.com/`. |
 | `sha256` | 64-hex of the exact artifact bytes. |
-| `trek` | The manifest's `trek` **range**, verbatim (`">=3.2.0 <4.0.0"`). **This is what TREK gates installs and activation on** — it is the only field that can express an exclusive upper bound. CI checks it matches the manifest at `commitSha`. |
-| `minTrekVersion` | `x.y.z` — the **lower bound of `trek`**, derived (`entry` fills it; never hand-write it). Legacy: it is what a TREK too old to know about `trek` falls back to. CI rejects an entry whose floor disagrees with its own range. |
-| `maxTrekVersion` | `x.y.z` or `null`. Legacy and **inclusive**, so it cannot express `<4.0.0` — never synthesise it from `trek`; prefer `trek`. |
+| `trek` | The manifest's `trek` **range**, verbatim (`">=3.2.0 <4.0.0"`). **The only compatibility field a new entry carries** — it is what TREK gates installs and activation on, and the only one that can express an exclusive upper bound. CI checks it matches the manifest at `commitSha`. |
+| `minTrekVersion` / `maxTrekVersion` | **Deprecated — don't set them.** `trek` says everything `minTrekVersion` said (it was just the range's lower bound) and says it better; `maxTrekVersion` is *inclusive* and so cannot express `<4.0.0` at all. Still accepted on entries published before `trek` existed, so a TREK too old to read `trek` has something to fall back on — and if a floor *is* present, CI enforces that it agrees with the range. `entry` no longer emits either. |
 | `size` | Bytes, 1 … 52 428 800 (50 MB). **Required — a common omission when hand-writing.** |
 | `apiVersion` | Integer >= 1. |
 | `nativeModules` | Literally `false` (const). |
@@ -137,7 +136,7 @@ runs schema/format checks only.)
 | Homoglyph / mixed-script | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek (U+0370–03FF, the full block — Latin+Greek look-alikes like Α/Ο/α **are** caught). Only fires on a *mix*; an all-Cyrillic name is not caught | Use plain ASCII |
 | Release tag | `gitTag` doesn't exist or doesn't resolve to `commitSha` | Push the tag; re-run `entry` |
 | Manifest parity | `id`/`version`/`type`/`apiVersion`/`trek`/`nativeModules` in the repo's `trek-plugin.json` **at `commitSha`** differ from the entry (or `nativeModules: true`) | Align manifest and entry; retag |
-| TREK version range | The published version's manifest declares no `trek` range, or an unsatisfiable one (`">=4.0.0 <3.0.0"`); or the entry's `trek` ≠ the manifest's; or `minTrekVersion` ≠ that range's lower bound. Versions published *before* the field existed are grandfathered | Declare a real range and re-run `entry` (it derives both fields). TREK will not install a plugin without one, so this gate is only telling you early |
+| TREK version range | The published version's manifest declares no `trek` range, or an unsatisfiable one (`">=4.0.0 <3.0.0"`); or the entry's `trek` ≠ the manifest's; or a (deprecated) `minTrekVersion` is present and ≠ that range's lower bound. Versions published *before* the field existed are grandfathered | Declare a real range and re-run `entry`. TREK will not install a plugin without one, so this gate is only telling you early |
 | Dependency parity | The entry's `requiredAddons` or `pluginDependencies` (sorted/normalized) differ from the manifest's at `commitSha` — including the common case where you declared them in the manifest but the SDK's `entry` didn't copy them, so the entry has `[]` | Hand-add the identical `requiredAddons`/`pluginDependencies` arrays to the entry |
 | Artifact hash / over-size | Downloaded asset's SHA-256 ≠ `sha256`, or the bytes are **> ~4 KB larger** than declared `size` (`buf.length > size + 4096`) — no lower-bound check; the 1–50 MB range is a separate *schema* check on the declared `size` | Never touch released assets; cut a new version |
 | Native binary scan | `.node`, `binding.gyp`, or a `prebuild(s)/` path inside the artifact (**zip or tar.gz**) | Remove native deps; repack |
@@ -396,8 +395,8 @@ then:
   `sha256` = `curl -fsSL <downloadUrl> | sha256sum`, `size` = the asset's exact
   byte count (`curl -sIL <downloadUrl> | grep -i content-length`),
   `commitSha` = `git rev-parse vX.Y.Z^{commit}`, plus `gitTag`, `downloadUrl`,
-  `trek` (copy the manifest's range verbatim), `minTrekVersion` (that range's lower
-  bound — CI rejects a floor that disagrees with the range), `apiVersion`,
+  `trek` (copy the manifest's range verbatim — the only compat field you need;
+  `minTrekVersion`/`maxTrekVersion` are deprecated, leave them out), `apiVersion`,
   `nativeModules: false`.
 - **Leave `reviewedAt` and `boundOwner` exactly as they are in the merged
   entry** — CI maintains them; don't delete, don't update. And never touch
