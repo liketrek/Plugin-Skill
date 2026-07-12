@@ -9,7 +9,7 @@
  *                                         #   -> docs/screenshot.png   (the publishable store image)
  *   node scripts/shot.mjs --preview       # the real widget via dev /preview, light AND dark
  *                                         #   -> docs/preview-light.png, docs/preview-dark.png
- *                                         #   (SDK >= 1.3.0; use these to get UI sign-off)
+ *                                         #   (use these to get UI sign-off)
  *   node scripts/shot.mjs --url <URL> --out <file> --no-serve   # screenshot any URL as-is
  *
  * Flags: --dir <plugin dir=.>  --port <4317>  --out <docs/screenshot.png>  --no-serve  --url <url>
@@ -81,7 +81,7 @@ try {
   if (url) {
     await capture(page, url, path.resolve(dir, outArg))
   } else if (preview) {
-    // The real widget, themed by dev's /preview (SDK >= 1.3.0). Toggle its #theme select.
+    // The real widget, themed by dev's /preview. Toggle its #theme select.
     if (serve) await startDev()
     for (const theme of ['light', 'dark']) {
       try { await page.goto(`${base}/preview`, { waitUntil: 'networkidle', timeout: 15000 }) } catch { /* retry below */ }

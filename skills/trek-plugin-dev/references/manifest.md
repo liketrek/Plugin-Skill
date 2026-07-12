@@ -13,7 +13,7 @@ registry CI, and the TREK install loader all apply the **same** rules
 | `version` | string | **yes** | Semver `\d+.\d+.\d+` with optional pre-release (`1.2.3`, `1.2.3-beta.1`). Must equal the git tag (`v` prefix) of the release. |
 | `type` | string | **yes** | `integration` \| `page` \| `widget` \| `trip-page` — `trip-page` mounts a full-frame tab inside every trip planner (scoped to the open trip), no dashboard presence. |
 | `apiVersion` | number | no | Plugin API version; currently `1` (SDK constant `PLUGIN_API_VERSION`). Defaults to `1`. Must be a number, not a string. **Not enforced at install** — the server accepts any numeric value with no version negotiation. |
-| `trek` | string | no | Supported TREK semver range, e.g. `">=3.2.0 <4.0.0"`. Its lower bound becomes `minTrekVersion` in the registry entry. The server does **not** gate installs on `min`/`maxTrekVersion` — advisory (registry/CI) only. |
+| `trek` | string | no | Supported TREK semver range, e.g. `">=3.3.0 <4.0.0"`. Its lower bound becomes `minTrekVersion` in the registry entry. ⚠️ **The server does not gate installs on `min`/`maxTrekVersion` — it is advisory (registry/CI) only.** So an *older* TREK will happily install your plugin, and on that host any `ctx.*` namespace it predates is simply **`undefined`**. Set the range honestly and guard optional namespaces (see [server-api.md](server-api.md)); `entry` **requires** this field to derive `minTrekVersion`. |
 | `author` | string | no | Shown in the store. |
 | `description` | string | no | One-line store summary. **The 200-char cap binds the registry *entry*, not the manifest** — manifest parity never compares `description`, so entry and manifest may legitimately differ. But `buildEntry` copies it verbatim and `validate`/`pack` don't check length, so a > 200-char manifest description fails registry CI **after** you've cut the release. Either keep it ≤ 200 chars here, or hand-shorten the entry's `description` afterwards (allowed). Min 5 chars on the entry side. |
 | `icon` | string | no | lucide-react icon name (default `Blocks`). Shown on the **Admin → Plugins** row/store card. **Note:** a page's top-nav entry uses `name` as its label but a **fixed `Blocks` icon** — the declared `icon` is *not* used for nav. |
@@ -68,6 +68,7 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `db:write:reservations` | `ctx.reservations.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`reservation_edit`**. `create`/`update` persist an `endpoints` array (from/to/stop legs): omitted = keep, `[]` = delete all, array = replace. |
 | `db:write:accommodations` | `ctx.accommodations.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`day_edit`**. Creating one **auto-creates the partner hotel reservation**, like the app. |
 | `db:write:packing` | `ctx.packing.create` / `update` / `delete` **and all bag methods** (`listBags` / `createBag` / `updateBag` / `deleteBag` / `setBagMembers`) | **Route handlers only.** Trip access **+** **`packing_edit`**. ⚠️ **Surprising grouping:** `db:read:packing` only unlocks `packing.list`; **every bag method (incl. `listBags`) needs `db:write:packing`.** `create` shape: `{name, category?, checked?, is_private?, visibility?:'common'\|'personal'\|'shared', recipient_ids?}`. |
+| `db:write:files` | `ctx.files.create` / `createLink` / `update` / `softDelete` | **Route handlers only.** Trip access **+** the acting user's **`file_upload`** / **`file_edit`** / **`file_delete`** (per operation). Blocked file extensions are refused. Note this is a **separate grant from `db:read:files`** and from `db:read:files:content`. |
 | `db:write:collab` | `ctx.collab.createNote` / `createPoll` / `votePoll` / `createMessage` | **Route handlers only.** Collab addon **+** trip access **+** **`collab_edit`**. |
 | `db:write:atlas` | `ctx.atlas.markCountry` / `unmarkCountry` / `markRegion` / `unmarkRegion` / `createBucketItem` / `deleteBucketItem` | Atlas addon. Affects the **acting user's own** atlas data. |
 | `db:write:vacay` | `ctx.vacay.toggleEntry(date)` / `toggleCompanyHoliday(date, note?)` | Vacay addon. Acting user's own entries. |
@@ -77,9 +78,9 @@ label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 | `db:write:tags` | `ctx.tags.create` / `update` / `delete` | The acting user's own tags. |
 | `db:write:todos` | `ctx.todos.create` / `update` / `delete` | **Route handlers only.** Trip access **+** **`packing_edit`** (todo writes ride on `packing_edit`). |
 | `db:meta` | `ctx.meta.get`/`set`/`list`/`delete` — the plugin's **own** namespaced key/value store on a `trip`/`place`/`day` — **and `reservation`/`accommodation`** | **Route handlers only.** Reads need trip access; writes need the entity's edit permission. Per-plugin namespace (you see only your own rows). Quotas: key ≤ 256 chars, value ≤ 64 KB JSON, ≤ 100 keys per entity (over → `BAD_PARAMS`). Enrich core entities without forking the schema. |
-| `ws:broadcast:trip` | `ctx.ws.broadcastToTrip` | **Route handlers only**; acting user must be a trip member. Event `plugin:<id>:<event>` to the **core app's** trip clients — **not** your own iframe. |
+| `ws:broadcast:trip` | `ctx.ws.broadcastToTrip` | **Route handlers only**; acting user must be a trip member. Event `plugin:<id>:<event>` to the trip's clients. It **does** come back to your own iframe — but only as a **name-only `trek:event` ping** (never the payload), and only on a frame that has a `tripId`. A dashboard `sidebar`/`hero` widget has none and must poll. See [client-bridge.md](client-bridge.md). |
 | `ws:broadcast:user` | `ctx.ws.broadcastToUser` | **Route handlers only**; target must equal the acting user (own connections only). Event `{ type: 'plugin:<id>', event }`. There is **no** `ws:broadcast:*`. |
-| `events:subscribe` | React to core activity via `events: [{ on, handler }]` on the **definition** (not a route) | **Wired.** Core announces every trip event (e.g. `place:created`, `day:updated`, `file:created`, or `*`) to subscribed, granted, active plugins. Handler gets **only `{ event, tripId }`** (never the payload) and runs with **no user** (like a job → trip reads refused; use `ctx.db`/`ctx.ws`/outbound). Fire-and-forget on a ~5 s timeout — a slow subscriber never blocks a core write. Your own `plugin:*` broadcasts are never re-delivered, so handlers can't loop. |
+| `events:subscribe` | React to core activity via `events: [{ on, handler }]` on the **definition** (not a route) | **Wired.** Core announces every trip event (e.g. `place:created`, `day:updated`, `file:created`, or `*`) to subscribed, granted, active plugins. Handler gets `{ event, tripId, entity?, entityId?, snapshot? }` — **`snapshot` (the changed row) only if you also hold that family's `db:read:*`**, otherwise it's omitted. Runs with **no user** (like a job → trip reads refused; use `ctx.db`/`ctx.ws`/outbound). Fire-and-forget on a ~5 s timeout — a slow subscriber never blocks a core write. Your own `plugin:*` broadcasts are never re-delivered, so handlers can't loop. |
 | `hook:photo-provider` | `hooks.photoProvider` | **Wired** (`plugin-photos.controller.ts` consumes it). |
 | `hook:calendar-source` | `hooks.calendarSource` | **Wired** (`plugin-calendar.controller.ts`). `getEvents(userId, start, end)` — `start`/`end` are ISO **strings**. |
 | `hook:place-detail-provider` | `hooks.placeDetailProvider.getDetails(placeId, ctx)` → `{ label, value?, url? }[]` | **Wired.** Core calls every active implementer to enrich a place's detail panel (additive, fail-safe). Server-side, no UI of its own. |
@@ -172,7 +173,7 @@ deactivate→activate). `scope: user` settings are **not** surfaced to server
   "version": "1.0.0",
   "apiVersion": 1,
   "type": "widget",
-  "trek": ">=3.2.0 <4.0.0",
+  "trek": ">=3.3.0 <4.0.0",
   "author": "You",
   "description": "Live flight status on the dashboard.",
   "icon": "Plane",
@@ -209,7 +210,7 @@ deactivate→activate). `scope: user` settings are **not** surfaced to server
   "license": "MIT",
   "icon": "Luggage",
   "type": "widget",
-  "trek": ">=3.2.0 <4.0.0",
+  "trek": ">=3.3.0 <4.0.0",
   "nativeModules": false,
   "permissions": ["db:read:trips"],
   "capabilities": {

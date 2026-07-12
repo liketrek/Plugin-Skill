@@ -105,11 +105,13 @@ export interface PluginRoute {
 
 export interface PluginRequest {
   method: string; path: string;
-  query: Record<string, unknown>; body: unknown;
+  query: Record<string, unknown>; body: unknown;   // body = the PARSED value
   user: { id: number; username: string; isAdmin: boolean } | null;
   headers?: Record<string, string>; // auth:false routes ONLY — a credential-free
                                      // allowlist (provider signature/event headers; never
                                      // Cookie/Authorization). Empty on authenticated routes.
+  rawBodyBase64?: string | null;     // auth:false routes ONLY; null elsewhere.
+                                     // The RAW bytes — what you must HMAC. See below.
 }
 export interface PluginResponse { status: number; headers?: Record<string, string>; body?: unknown; }
 
@@ -216,7 +218,7 @@ export interface PluginContext {
 | Area | Behavior | Requires |
 |---|---|---|
 | `ctx.db` | Your **own** SQLite file (never `trek.db`). `migrate(id, sql)` runs a keyed, idempotent migration once per id. Refused SQL: `ATTACH` / `DETACH` / `VACUUM` / `PRAGMA` / **`RECURSIVE`**. **Caps:** DB ≤ **256 MB** (further writes fail `SQLITE_FULL`), a single `query` returns ≤ **100 000 rows**, SQL text ≤ **100 000 chars**. | `db:own` |
-| `ctx.trips` | Read-only; **route handlers only**. The host binds the acting user from the request and membership-checks every read. `asUserId` is **ignored** (can't impersonate). From `onLoad`/`jobs` (no user) → `RESOURCE_FORBIDDEN`. | `db:read:trips` |
+| `ctx.trips` | Read-only; **route handlers only**. The host binds the acting user from the request and membership-checks every read. `asUserId` is **ignored** (can't impersonate). From `onLoad`/`jobs` (no user) → `RESOURCE_FORBIDDEN`. ⚠️ **`getPlaces(tripId)` returns the trip's place *pool*, ordered `created_at DESC` — it is NOT the itinerary and carries no day/position.** A place has no itinerary position of its own (that lives on the day assignments). For the **day-ordered itinerary**, use **`ctx.trips.getDays(tripId)`**. | `db:read:trips` |
 | `ctx.users.getById` | **Route handlers only** (needs acting user). Returns **only the acting user themselves or a user who co-members a trip with them** (`id, username, display_name, avatar`) — **not** a free lookup of any account by id; others → `RESOURCE_FORBIDDEN`. | `db:read:users` |
 | `ctx.packing.list(tripId)` | **Route handlers only** (host-bound acting user; `onLoad`/jobs → `RESOURCE_FORBIDDEN`). A trip's packing items with bags/assignees hydrated, **scoped to what the acting user may see** — another member's private items are filtered out (same as the app). Separate scope from `files`. | `db:read:packing` |
 | `ctx.files.list(tripId)` | **Route handlers only** (acting user; membership-checked). A trip's files with **trash excluded** — the same view the files tab shows. | `db:read:files` |
@@ -241,14 +243,24 @@ export interface PluginContext {
 | `ctx.log` | `info`/`warn`/`error` → the plugin's error log in Admin → Plugins. | — |
 | `ctx.id` | Your plugin id (also in `process.env.TREK_PLUGIN_ID`). | — |
 
-> **Never hard-depend on the enrichment namespaces — even on a real host.** The
-> optional namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`,
-> `packing`, `files`, `trips.update`) have been observed **partly `undefined` on
-> real production hosts** (independent of the dev server, which has full parity on
-> the current SDK — see [testing.md](testing.md)): a live
-> route using `ctx.meta.set(…)` crashed with `Cannot read properties of
-> undefined (reading 'set')`. So never build a feature that *hard-requires*
-> them. The robust pattern:
+> **Never hard-depend on the enrichment namespaces — guard them.** The optional
+> namespaces (`ctx.meta`, `places`, `days`, `itinerary`, `costs`, `packing`, `files`,
+> `trips.update`) have been observed **partly `undefined` on real production hosts**: a
+> live route using `ctx.meta.set(…)` crashed with `Cannot read properties of undefined
+> (reading 'set')`.
+>
+> **Why — and it is not flakiness.** On a *current* host every namespace is always
+> defined: the host builds the whole `ctx` unconditionally, and permissions are enforced
+> at call time (`PERMISSION_DENIED`), not by omitting the object. What you are seeing is
+> **version skew**. The server does **not** gate installs on `minTrekVersion` (it is
+> advisory — see [manifest.md](manifest.md)), so an **older TREK will happily install a
+> plugin built against a newer SDK**, and that host's runtime genuinely predates the
+> namespace — so it is missing.
+>
+> Two consequences:
+> - Set `"trek"` honestly (`">=3.3.0 <4.0.0"`) so the registry advertises the real floor.
+>   It will *not* stop an old instance installing you — but it's the only signal there is.
+> - **Still guard**, because nothing enforces that floor. The robust pattern:
 >
 > - **`db:own` is the source of truth** for your plugin's own data; mirror into
 >   `ctx.meta` only **best-effort** (so core surfaces that read meta stay
@@ -267,13 +279,21 @@ export interface PluginContext {
 > await attempt(() => ctx.meta.set('trip', tripId, 'pinned', data))
 > ```
 
-> **`ctx.ws.broadcast*` never reaches your own plugin UI.** Broadcasts go to the
-> **core TREK app's** WebSocket clients; there is no path forwarding
-> `plugin:<id>:*` events into your sandboxed iframe (the frame can't open the
-> credentialed `/ws`, and the bridge only relays `trek:context`/`trek:response`/
-> `trek:error`). For your widget/page to reflect live state, **poll your own
-> route via `trek:invoke`**. `ws:broadcast:*` is only useful to drive parts of
-> TREK that explicitly consume the event.
+> **`ctx.ws.broadcastToTrip` reaches your own iframe — but only as a name-only ping.**
+> The frame can't open the credentialed `/ws`, so the host relays events over the
+> bridge instead. Your own `plugin:<id>:*` broadcasts (and core trip events) arrive
+> as **`trek:event` `{ event, tripId }` — the *name* only, never the payload**
+> (`PluginFrame.tsx`; other plugins' broadcasts are filtered out).
+>
+> Two conditions, and both bite:
+> - **Only on a frame that has a `tripId`** — i.e. `trip-page` and the scoped
+>   `place-detail`/`day-detail`/`reservation-detail` widgets. A dashboard
+>   `sidebar`/`hero` widget has `tripId: null` and receives **nothing**.
+> - **Only while a planner has that trip joined** on the socket.
+>
+> So treat `trek:event` as a **refresh ping**: on receipt, re-fetch your own route via
+> `trek:invoke` (the payload was never sent). A dashboard widget must **poll** — it has
+> no other option. `ctx.ws.broadcastToUser` is not bridged into the frame at all.
 
 ## Host-mediated brokers
 
@@ -408,6 +428,13 @@ producer lists `capabilities.provides` / `capabilities.emits`, the consumer list
 - **`ctx.events.emit(name, payload)`** — publish an event (`name` must be in your
   `capabilities.emits`) to every dependent that declared a matching
   `subscriptions` entry; their handler runs with the emitted payload.
+  ⚠️ **`emit` is fire-and-forget and returns `void` — you cannot `await` or `catch` it.**
+  If the host rejects the emit (an **undeclared event name**, a rate limit), the rejection
+  is **not** thrown at you: it surfaces as a **warning on your plugin's own log stream**
+  (`events.emit("x") was rejected by the host: …`). That log line is your *only* signal —
+  so if a subscriber never fires, **check the plugin's error log first**; the usual cause
+  is `name` missing from `capabilities.emits`. (It can't throw: a detached rejection would
+  crash the child and terminally disable the plugin over one bad emit.)
 - Definition keys: `exports: { <fn>(args, ctx) }` (the callable targets) and
   `subscriptions: [{ plugin, event, handler }]` (consume a dependency's emits).
 
@@ -437,6 +464,20 @@ code**, e.g. `"PERMISSION_DENIED: …"` — catch and match on that.
   headers; **never** `Cookie` / `Authorization` / session). Empty on
   authenticated routes. This is how you **verify a webhook signature** against a
   secret in `ctx.config`/`ctx.settings`.
+- **`req.rawBodyBase64` — HMAC over this, not over `body`.** Also `auth:false`-only
+  (`null`/absent elsewhere). `body` is the **parsed** value, and re-serializing it will
+  **not** reproduce the bytes the sender signed — key order, whitespace and unicode
+  escaping all differ — so the signature will never match. Verify against the raw bytes:
+
+  ```js
+  const raw = Buffer.from(req.rawBodyBase64 ?? '', 'base64');
+  const expected = crypto.createHmac('sha256', ctx.config.webhook_secret)
+    .update(raw).digest('hex');
+  const got = req.headers['x-hub-signature-256']?.replace(/^sha256=/, '') ?? '';
+  const ok = expected.length === got.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(got));
+  if (!ok) return { status: 401, body: { error: 'bad signature' } };
+  ```
 - **Response constraints:** of your `headers`, only **`content-type` and
   `cache-control`** pass through (everything else — incl. `set-cookie`, custom
   headers — is dropped). Every reply is forced `X-Content-Type-Options: nosniff`

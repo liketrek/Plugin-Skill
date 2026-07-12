@@ -110,9 +110,8 @@ keys).
 > missing/mismatched) can't activate, disabling an addon cascades to dependent
 > plugins, dependency cycles are rejected, and installing from the registry
 > **auto-installs declared plugin dependencies** (`dependencies.ts`,
-> `registry.installWithDependencies`). ⚠️ Local `preflight` does **not** replay
-> the dependency-parity gate — a declared field passes `publish` locally and
-> fails only in CI, so hand-check the entry before PRing.
+> `registry.installWithDependencies`). `preflight` **does** replay the
+> dependency-parity gate, so a missing array is caught locally before you PR.
 
 ## CI gates
 
@@ -133,7 +132,7 @@ runs schema/format checks only.)
 |---|---|---|
 | JSON schema | Entry violates `plugin-entry.schema.json` (incl. unknown keys) | Regenerate with `trek-plugin entry` |
 | id ↔ filename | `id` ≠ filename or not a valid slug | Rename file / fix id |
-| Owner binding | Existing id repointed to a different owner (`OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge) | Only the bound owner updates it; an owner change needs a maintainer to re-run CI with `ALLOW_OWNER_CHANGE=1` |
+| Owner binding | Existing id repointed to a different owner (`OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge) | Only the bound owner updates it; a genuine transfer needs a maintainer to apply the **`allow-owner-change`** label (see [Maintainer overrides](#maintainer-overrides)) |
 | Homoglyph / mixed-script | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek (U+0370–03FF, the full block — Latin+Greek look-alikes like Α/Ο/α **are** caught). Only fires on a *mix*; an all-Cyrillic name is not caught | Use plain ASCII |
 | Release tag | `gitTag` doesn't exist or doesn't resolve to `commitSha` | Push the tag; re-run `entry` |
 | Manifest parity | `id`/`version`/`type`/`apiVersion`/`nativeModules` in the repo's `trek-plugin.json` **at `commitSha`** differ from the entry (or `nativeModules: true`) | Align manifest and entry; retag |
@@ -141,14 +140,39 @@ runs schema/format checks only.)
 | Artifact hash / over-size | Downloaded asset's SHA-256 ≠ `sha256`, or the bytes are **> ~4 KB larger** than declared `size` (`buf.length > size + 4096`) — no lower-bound check; the 1–50 MB range is a separate *schema* check on the declared `size` | Never touch released assets; cut a new version |
 | Native binary scan | `.node`, `binding.gyp`, or a `prebuild(s)/` path inside the artifact (**zip or tar.gz**) | Remove native deps; repack |
 | Egress | Any `http:outbound*` permission with `egress[]` missing/empty **and `operatorEgress` not `true`**; a bare `*` in `egress`; `operatorEgress` parity mismatch vs the manifest; or `operatorEgress` without an `http:outbound` permission | Declare explicit hosts, or set `operatorEgress: true` in **both** manifest and entry |
+| Signature shape | A `signature` with no `authorPublicKey` (*"…has a signature but the entry has no authorPublicKey — TREK refuses to install a half-signed entry"*), an `authorPublicKey` with no signed version (*"…no version carries a signature — either sign the release or drop the key"*), or a key/signature that doesn't parse | Sign properly with `--sign`, or drop the key entirely |
+| Signature verify | The `signature` **does not verify** against `authorPublicKey` over the downloaded artifact bytes (*"author signature does not verify against authorPublicKey — TREK will refuse this artifact"*) | Re-sign the **exact uploaded asset**; never sign a re-pack |
+| Signing downgrade | The plugin shipped **signed** before and this entry **drops the key**, **changes the key**, or has **any version without a signature** — checked against the entry on the PR base, across **every** `versions[]`, not just the newest | Keep signing with the same key. A real key rotation needs the **`allow-key-change`** label; dropping the key has **no override** |
 
-**No signature gate.** `validate-entry.mjs` does **not** verify signatures — only
-the SHA-256 pin. A `signature`/`authorPublicKey` is shape-checked by the schema
-and verified by **TREK at install time (TOFU)**, not in PR CI.
+**Signatures are verified in CI.** `validate-entry.mjs` runs the *same* verifier TREK
+uses at install (`scripts/lib/verify-signature.mjs` is a port of the host's
+`install/verify-signature.ts` and must stay behaviourally identical) — so a signature CI
+accepts is one the host accepts. Signing itself stays **optional**: an unsigned entry
+passes on its SHA-256 pin alone, exactly as before.
 
 (Reserved ids `registry`, `install`, `rescan` are refused by **TREK's install
 loader** — they collide with admin API route segments — not by the CI script.
 Avoid them regardless.)
+
+### Maintainer overrides
+
+Two gates protect *existing installs* rather than the submission itself, so each has an
+escape hatch — a real repo transfer, a genuinely rotated key. A maintainer opens it by
+applying a **label** to the PR, which re-runs validation:
+
+| Label | Lifts |
+|---|---|
+| `allow-key-change` | `authorPublicKey` differs from the entry on the PR base |
+| `allow-owner-change` | The entry's repo owner differs from the `id`'s binding in `OWNERS.json` |
+
+It is a **label**, not a magic string in a commit message or a file in the branch,
+**on purpose**: labelling needs triage/write permission on the registry, which a fork
+contributor does not have — so an author can't wave their own PR through. Don't try to
+self-serve one.
+
+The other two downgrade cases — **dropping** the key, or shipping a version with **no
+signature** — have **no override at all**. TREK refuses those updates on every instance
+that already has the plugin, so merging one is simply a broken entry.
 
 ### README gates (`check-readme.mjs`, fetched from your repo at the pinned commit)
 
@@ -203,21 +227,42 @@ Keep the composition centred for the card crop. A ready-to-edit template that
 produces exactly this shot ships with the skill:
 [`assets/store-shot.html`](../assets/store-shot.html).
 
-## Signing (optional, recommended)
+## Signing — do it, starting at v1.0.0
 
-`sha256` proves the registry-vouched bytes; a signature additionally proves
-**you** built them (a compromised registry can't ship attacker code under your
-name). The SDK produces and TREK verifies a **bare Ed25519** key + signature —
-**not minisign's framed format**: `authorPublicKey` is base64 of the raw 32-byte
-public key, each `signature` is base64 of the raw 64-byte signature over the
-artifact bytes. Verified offline, key pinned on first install (TOFU). **Registry
-CI does not verify it — only TREK at install time does.**
+**Sign every plugin you publish.** It is technically optional (an unsigned plugin
+installs on its sha256 pin alone, and unsigned is not "unsafe" — it is simply **one
+fewer guarantee**), but there is no good reason not to, and one strong reason to:
 
-Use the SDK (one command, consistent format). TREK's install-time verifier also
-accepts minisign-framed payloads — a 42-byte `Ed`+keyid `.pub` and 74-byte
-`.minisig` signatures, legacy and prehashed alike — but **mixing formats across
-versions trips the `entry --merge`/`submit` key-equality check** (a plain string
-compare), so pick one format and stay with it:
+| | Proves |
+|---|---|
+| `sha256` pin | The bytes are what the **registry** served you |
+| `authorPublicKey` + `signature` | The bytes are what **the author built** |
+
+Only the signature survives a **compromised registry**. Without it, anyone who can write
+to the index can publish code under your plugin's name and every instance will install it
+happily — the pin will match, because the attacker computed it. With it, they'd also need
+your private key. That is the entire threat model, and it costs you one `keygen` and one
+flag.
+
+Two things make this an easy call:
+
+- **It is cheap.** `keygen` once, ever, for all your plugins; then `--sign` on publish.
+- **Adopting it later is fine — but you can never stop.** Signing is a one-way door (see
+  below). So the only question that actually binds you is *"can I keep a key safe?"* If
+  yes, sign from the first release, because an unsigned v1.0.0 is a version anyone who
+  installs it will hold on trust-on-first-use forever.
+
+`authorPublicKey` is the base64 Ed25519 public key; each `signature` is base64 over the
+artifact bytes. The key is **pinned on first install (TOFU)**, and the signature is
+verified in **both** places: the registry's CI *and* TREK at install time, with the same
+verifier. TREK badges Signed/Unsigned in the admin list and in Discover, so an admin
+choosing between two plugins can see which one you are.
+
+All three verifiers (host, registry CI, and `preflight`) accept **either** the bare form
+the SDK emits (32-byte key / 64-byte signature) **or** minisign-framed payloads (a 42-byte
+`Ed`+keyid `.pub`, and 74-byte `.minisig` signatures, legacy and prehashed alike). But
+**mixing formats across versions trips the `entry --merge`/`submit` key-equality check**
+(a plain string compare), so pick one and stay with it — easiest is to just use the SDK:
 
 ```bash
 npx trek-plugin-sdk keygen        # once → ~/.trek-plugin/signing.key (BACK IT UP)
@@ -228,19 +273,59 @@ npx trek-plugin-sdk publish --repo you/repo --tag v1.2.0 --sign
 `publish` writes `authorPublicKey` + `signature` into the entry (the standalone
 `sign [zip]` command only **prints** them).
 
-Rules: the key must stay **stable across versions**. When merging onto an
-already-published entry, **both `entry --merge` and `submit` refuse** (a) a
-different signing key and (b) an *unsigned* update to a previously-signed plugin.
-Unsigned plugins install on sha256 alone.
+### Signing is a one-way door
+
+Once a plugin has shipped signed, TREK **refuses**, on every instance that already has
+it, an update that (a) drops the key, (b) is signed with a *different* key, or (c) has no
+signature. CI blocks all three before merge (see the gate table).
+
+So **rotating a key is not a routine release.** Every existing install stops updating
+until an admin explicitly **re-trusts** the new key in TREK's admin UI.
+
+### Look after the key
+
+The key is a single file, `~/.trek-plugin/signing.key` (mode 0600), and `keygen`
+**refuses to overwrite an existing one** — so you can't clobber it by accident. What you
+*can* do is lose it.
+
+- **Back it up now**, off the machine, before your first signed release — a password
+  manager entry or an encrypted archive is enough. It's a private key: don't commit it,
+  don't put it in CI secrets you don't control, don't paste it anywhere.
+- **One key for all your plugins** is fine and is the intended usage.
+- Sign from the machine that holds it; `--key <file>` points at it if it lives elsewhere.
+
+**If you lose it** you are not stuck, but it is expensive and entirely manual:
+`keygen` a new one, publish a re-signed version, and get a maintainer to apply
+**`allow-key-change`** on the registry PR. Then **every admin who already installed the
+plugin must re-trust the new key by hand** — until each one does, that instance stops
+receiving your updates. There is no way to do this for them. That is the whole reason the
+backup matters.
+
+### How a refusal looks inside TREK
+
+The four refusal conditions carry machine-readable codes, and the reason is persisted on
+the plugin row, so the Installed list keeps showing *why* an update was blocked:
+
+| Code | Meaning | Overridable? |
+|---|---|---|
+| `SIGNATURE_KEY_CHANGED` | The author's key changed since install | **Yes** — the admin re-trusts it |
+| `SIGNATURE_MISSING` | Was signed before; this update is unsigned | **No** |
+| `SIGNATURE_INCOMPLETE` | A key without a signature, or vice versa | **No** |
+| `SIGNATURE_INVALID` | The signature does not verify | **No** |
+
+Only `SIGNATURE_KEY_CHANGED` gets an override (`POST /api/admin/plugins/:id/retrust`),
+which re-pins the key **and** updates in one call — and the artifact must still verify
+under the new key, so a re-trust only ever moves the pin from one *verified* key to
+another. The other three mean the bytes are not what the author signed; there is **no
+override button at all** for them. An admin confirming a rotation sees both key
+fingerprints, to check the new one with you out of band.
 
 ## When `submit` / `publish` can't open the PR (do it by hand)
 
-The automated PR step can fail with **`error: remote upstream already exists`**
-(still present in SDK 1.4.0, `submit.ts`): `submit` clones your fork with
-`gh repo clone`, which auto-adds an `upstream` remote for a fork, then
-unconditionally runs `git remote add upstream …` again. The **release itself is
-already done** at that point — only the PR is missing. Open the one-file PR
-manually:
+If the automated PR step fails for any reason (no `gh`, no auth, a network blip), the
+**release itself is already done** — only the PR is missing, and re-running `publish`
+would refuse to overwrite the released artifact. Don't re-release; just open the one-file
+PR by hand:
 
 ```bash
 # 0. `entry` hashes your LOCAL plugin.zip (never downloads) — make sure the

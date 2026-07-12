@@ -1,6 +1,6 @@
 ---
 name: trek-plugin-dev
-description: Build, test, and publish plugins for TREK, the self-hosted travel planner (github.com/mauriceboe/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, local development with trek-plugin-sdk (create/dev/validate/pack), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN or registry CI failures, or preparing a TREK-Plugins registry entry or PR.
+description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/mauriceboe/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, local development with trek-plugin-sdk (create/dev/validate/pack), author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a signature/key-rotation problem (SIGNATURE_KEY_CHANGED, re-trust, allow-key-change), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN or registry CI failures, or preparing a TREK-Plugins registry entry or PR.
 ---
 
 # TREK Plugin Development
@@ -45,13 +45,22 @@ npx trek-plugin-sdk dev            # http://localhost:4317 — hot reload,
 npx trek-plugin-sdk validate .
 npx trek-plugin-sdk pack .         # plugin.zip + prints sha256 and size
 
-# 4. Publish: public GitHub repo (convention: trek-plugin-<id>),
+# 4. Make a signing key — ONCE, ever, for all your plugins. BACK IT UP.
+npx trek-plugin-sdk keygen         # → ~/.trek-plugin/signing.key
+
+# 5. Publish: public GitHub repo (convention: trek-plugin-<id>),
 #    README filled in, docs/screenshot.png committed, then ONE command:
-npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0
+npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0 --sign
 #    = pack → git tag + GitHub release → preflight (registry CI, locally)
 #      → opens the registry PR. Stops before submitting if preflight fails.
-#    Add --sign to sign the artifact (recommended). Requires git + gh (authed).
+#    Requires git + gh (authed).
 ```
+
+**Sign from v1.0.0.** `--sign` proves the artifact came from *you*, not merely
+that the registry vouched for some bytes — so a compromised registry can't ship
+code under your name. It costs one `keygen` and one flag. Adding it **later** is
+easy; the thing you cannot do is *stop* (see rule 11), so the only decision that
+ever really binds is whether you'll keep the key safe. Back it up and sign.
 
 Update flow: bump `version` in the manifest, re-pack, new `vX.Y.Z` tag/release,
 then `entry --merge` onto the existing registry file (newest version first) and
@@ -143,23 +152,31 @@ inject native UI or honour data-rights with no iframe. See
    only inside route handlers** (they need the acting user the host binds from the
    request; from `onLoad`/jobs/**events** → `RESOURCE_FORBIDDEN`). `asUserId` is ignored;
    `ctx.users` returns only self or a trip co-member; `ctx.ws.broadcastToUser`
-   targets only the acting user — and **no broadcast reaches your own iframe**
-   (poll via `trek:invoke`). ** several `ctx.*` paths now write core TREK
+   targets only the acting user. **Your own `ctx.ws.broadcastToTrip` *does* come
+   back to your iframe — but only as a name-only `trek:event` ping (never the
+   payload), and only on a frame that has a `tripId`** (`trip-page` + the scoped
+   detail widgets). Treat it as a refresh signal and re-fetch via `trek:invoke`. A
+   dashboard `sidebar`/`hero` widget has no `tripId` and gets **nothing** — it must
+   poll. Several `ctx.*` paths **write core TREK
    data** (`places`/`days`/`itinerary`/`trips.update`, plus `costs.create`): each
    is route-only and gated on the acting user's matching edit permission
    (`place_edit`/`day_edit`/`trip_edit`/`budget_edit`), exactly like the web UI.
    `ctx.meta` stores the plugin's own namespaced data on a trip/place/day (reads
    need trip access, writes the entity's edit permission). **Heads-up: these
    enrichment namespaces (`meta`/`places`/`days`/`itinerary`/`costs`/`packing`/`files`/
-   `trips.update`) have been observed partly `undefined` on real hosts** (the dev
-   server has full parity on the current SDK). Treat them all as optional: `db:own`
-   as source of truth, `ctx.meta` only a best-effort mirror, every optional call
-   behind a thunked guard (`attempt(() => ctx.meta.set(…))` — the thunk also
-   catches the synchronous property throw). See
+   `trips.update`) can be `undefined` on real hosts** — not flakiness, but **version
+   skew**: TREK does *not* enforce `minTrekVersion` at install, so an older instance
+   will install your plugin and simply lack the namespace. Set `"trek": ">=3.3.0
+   <4.0.0"`, and still guard: `db:own` as source of truth, `ctx.meta` only a
+   best-effort mirror, every optional call behind a thunked guard
+   (`attempt(() => ctx.meta.set(…))` — the thunk also catches the synchronous
+   property throw). See
    [server-api.md](references/server-api.md) and
    [testing.md](references/testing.md). Budget amount key is **`total_price`**,
-   not `amount` (unknown keys are silently dropped → saves 0). ** the
-   `ctx.*` surface roughly triples** — new booking/roster/personal-data DB
+   not `amount` (unknown keys are silently dropped → saves 0). `ctx.trips.getPlaces`
+   returns the **place pool** (`created_at DESC`), *not* the itinerary — use
+   `ctx.trips.getDays` for day order. The
+   `ctx.*` surface is broad — booking/roster/personal-data DB
    namespaces (`reservations`/`accommodations`/`packing` writes+bags/`collab`/
    `journal`/`atlas`/`vacay`/`collections`/`daynotes`/`todos`/`tags`/`categories`/
    `trips.members`+`addMember`+`create`/`files.getContent`+writes), `ctx.meta` now
@@ -198,9 +215,21 @@ inject native UI or honour data-rights with no iframe. See
 10. **Registry PR = exactly one file**, `registry/plugins/<id>.json`. Never
     touch `dist/` (generated on merge) or set `reviewedAt`/`boundOwner`
     (CI-maintained).
-11. **Signing is a one-way door:** once a plugin ships signed, an unsigned or
-    differently-keyed update is refused until an admin re-trusts it. Back up
-    `~/.trek-plugin/signing.key`.
+11. **Sign your plugin — and then never stop.** Signing is technically optional
+    (unsigned installs on the sha256 pin alone — one fewer guarantee, not
+    "unsafe"), but **sign anyway**: `keygen` once, `--sign` on every publish. The
+    pin only proves the bytes are what the *registry* served; the signature proves
+    they are what *you* built. It is the difference between trusting the registry
+    and trusting the author, and it is the one security property only you can
+    supply.
+    It is also a **one-way door**, so go in deliberately: once a plugin has shipped
+    signed, TREK refuses — on every instance that already has it — an update that
+    drops the key, changes the key, or ships an unsigned version, and **registry CI
+    blocks all three before merge**. Only a *key rotation* is recoverable (a
+    maintainer applies `allow-key-change`; every admin must then re-trust it).
+    Dropping the key or shipping an unsigned version has **no override at all**.
+    → **Back up `~/.trek-plugin/signing.key`.** Losing it doesn't just cost you the
+    key; it strands every existing install until each admin re-trusts a new one.
 12. **Manifest `routes[]` and `capabilities.nav` are declarative only.** The
     host reads real routes off the loaded `definePlugin` object; a page's nav
     entry uses top-level `name` as its label but a **fixed `Blocks` icon** — the
@@ -234,7 +263,7 @@ inject native UI or honour data-rights with no iframe. See
 - Crash/hang/OOM kills only the plugin's process; TREK keeps running. Watchdog:
   RSS 300 MB, 192 MB heap, 30 s `onLoad`/route timeouts, 5 crashes/5 min →
   auto-disabled (see [references/server-api.md](references/server-api.md)).
-- ** Per-plugin RPC rate limit:** a token bucket at the `ctx` dispatch
+- **Per-plugin RPC rate limit:** a token bucket at the `ctx` dispatch
   boundary (defaults burst 60, 20/s, 16 in-flight; env `TREK_PLUGIN_RPC_BURST` /
   `_PER_SEC` / `_INFLIGHT`) throttles a runaway plugin instead of freezing the
   single-threaded host.
@@ -259,13 +288,13 @@ inject native UI or honour data-rights with no iframe. See
   `TREK_PLUGIN_REGISTRY_URL` (override registry source);
   `TREK_PLUGINS_DEV_LINK=1` enables the **DEV-ONLY** dev-link workflow
   (link/reload a local build against real data — off by default, **never set in
-  production**; see [references/cli.md](references/cli.md#dev-link--run-your-local-build-inside-a-real-instance-330-dev-only)),
+  production**; see [references/cli.md](references/cli.md#dev-link--run-your-local-build-inside-a-real-instance-dev-only)),
   the RPC-limit knobs `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`, and the
   log rate-limit knobs `TREK_PLUGIN_LOG_BURST` / `_PER_SEC` (defaults 50/10).
 - **Per-plugin activity log:** every user can audit what plugins did in their
   name at `GET /api/plugin-activity` (hash-chained audit trail) — design write
   paths knowing each call is user-visible.
-- ** Backups include plugins:** TREK backup/restore now archives each
+- **Backups include plugins:** TREK backup/restore archives each
   plugin's per-plugin SQLite data tree **and** installed code (staged and swapped
   in on next boot), so a restore no longer loses plugin state. Older archives
   without them are a no-op.

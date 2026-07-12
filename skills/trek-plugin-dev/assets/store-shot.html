@@ -95,7 +95,7 @@
   .cards { margin-top: 40px; display: flex; gap: 28px; justify-content: center; }
   .col { display: flex; flex-direction: column; }
 
-  /* Glassy tool card — mirrors the ≥3.2.1 PluginWidgets.tsx look. */
+  /* Glassy tool card — mirrors the PluginWidgets.tsx look. */
   .card { width: 440px; border-radius: 20px; overflow: hidden; border: 1px solid;
           backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
   .card .head { padding: 16px 20px 8px; font-size: 12px; font-weight: 600; text-align: left;
@@ -188,7 +188,7 @@
       e.source.postMessage({
         type: 'trek:context', tripId: f.cfg.tripId ?? null, userId: '1',
         theme: f.cfg.theme, locale: CONFIG.locale, hostOrigin: '*',
-        // ≥3.2.1 fields the design kit reads. Add `tokens: {…}` for an exact accent.
+        // Fields the design kit reads. Add `tokens: {…}` for an exact accent.
         appearance: { scheme: 'default', density: 'comfortable', reducedMotion: false, noTransparency: false },
       }, '*')
     } else if (m.type === 'trek:invoke') {

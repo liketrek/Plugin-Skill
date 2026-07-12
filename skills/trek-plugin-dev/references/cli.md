@@ -11,22 +11,43 @@ npx trek-plugin-sdk <command> [args]
 
 | Command | Needs | What it does |
 |---|---|---|
-| `create [name] [--type t] [--author x] [--description x] [--permissions "a,b"] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. The page/widget scaffold emits a **design-kit client** (`<!-- trek:ui -->` marker + a `window.trek` UI); a **notification-channel template** is available (wizard option / `--template notification-channel`). |
+| `create [name] [--type t] [--author x] [--description x] [--permissions "a b"] [--template blank\|notification-channel] [--egress host,host] [--required-addons a,b] [--interactive]` | — | Scaffold a plugin. No name (or `--interactive`) → a **Clack wizard** (id, **location**, type, author, **description**, multiselect permissions, and — if `http:outbound` is picked — **egress hosts**), then offers `git init` + `npm install`. With a name it's non-interactive and still requires the name. The page/widget scaffold emits a **design-kit client** (`<!-- trek:ui -->` marker + a `window.trek` UI); a **notification-channel template** is available (wizard option / `--template notification-channel`). ⚠️ A **valueless** flag counts as absent — a bare `--permissions` grants nothing (it does *not* create a permission named `true`). |
 | `dev [dir] [--port 4317]` | — | Local dev server (default `http://localhost:4317`) with hot reload, SDK injection, permission-enforcing `ctx`. Also serves a themed host preview at **`/preview`**, expands the `<!-- trek:ui -->` marker on `/ui`, and exposes `/__dev/fire/*` for non-route entry points. See [testing.md](testing.md). |
 | `validate [dir]` | — | Manifest + layout checks (same manifest rules as the install loader). Fails on invalid `trek-plugin.json`, missing `README.md`, or missing `server/index.js`; warns if dir name ≠ id, README lacks a screenshot, scaffold placeholders remain, the name/description contain **emoji** (TREK strips them from host-rendered text), `requiredAddons` names an unknown addon, or the client ships a raw `<select>` without the design kit. Since `pack` validates first, a missing README also fails `pack`. **Subset of CI** — CI additionally verifies release/sha256/README over the network. |
 | `pack [dir] [--out plugin.zip] [--json]` | — | Validates, then builds `plugin.zip` in the installer's exact layout; prints **sha256 + byte size**. `--json` for machine-readable output. ⚠️ Zip mod dates are fixed (a same-machine, same-SDK re-pack is byte-identical), but re-packs elsewhere can differ (walk order, per-SDK inlined kit, CRLF) — the registry `sha256`/`size` must come from the **uploaded release asset**, never a re-pack (see [publishing.md](publishing.md)). |
 | `entry [dir] --repo <owner/name> --tag <vX.Y.Z> [--dir d] [--zip plugin.zip] [--commit <sha>] [--asset <name>] [--merge <entry.json>] [--out <file>] [--sign [key]]` | git | Emits the ready-to-PR registry entry: resolves `commitSha` from the tag (`git rev-parse <tag>^{commit}`), fills `downloadUrl`, `sha256`, `size`, `apiVersion`, `minTrekVersion`. `--merge` prepends the new version (newest-first) and refuses a key switch / unsigned update to a signed plugin. ⚠️ `entry` hashes the **local** zip (`--zip`, default `plugin.zip`) — it never contacts GitHub; `artifact not found: <path>` means the local zip is missing (run `pack` first). What matters is that the file you hash is **byte-identical to the uploaded release asset**: generate the entry from the same `plugin.zip` you uploaded, then run `preflight`, which *does* download and verify the asset. |
 | `release [dir] --repo <o/n> --tag <vX.Y.Z> [--out] [--notes] [--commit] [--merge] [--sign [key]]` | git + `gh` (authed) | One shot: `pack` → `gh release create` (uploads the zip) → prints the entry. |
-| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity, artifact sha256 + size, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI **except** for CI-only gates: full JSON-schema validation (e.g. the 200-char description cap), dependency parity (`requiredAddons`/`pluginDependencies`), homoglyph names, and owner binding. |
+| `preflight [dir] --repo <o/n> --tag <vX.Y.Z> [--all] [--entry <file.json>] [--zip] [--commit] [--sign]` | network | Runs the **full registry CI locally**: tag→commit, manifest parity (incl. `operatorEgress`/`requiredAddons`/`pluginDependencies`), artifact sha256 + size, **author-signature shape + verification**, native scan, README gate. **Default checks only the newest version; `--all` checks every `versions[]`.** Green preflight ⇒ green CI **except** for CI-only gates: full JSON-schema validation (e.g. the 200-char description cap), homoglyph names, owner binding, and the **signing-downgrade guard** (it compares against the entry on the PR base, which only exists in CI). |
 | `submit --repo <o/n> --tag <vX.Y.Z> [--branch <name>] [--keep] [--draft] [--registry <owner/name>] [--zip] [--commit] [--sign [key]]` | `gh` (authed) | Forks TREK-Plugins (once), branches (`plugin-<id>-<version>` unless `--branch`), writes/merges the entry, pushes, opens the PR. `--keep` keeps the temp clone dir. **`submit` does NOT run preflight** (a clean path if you ever need to skip it). |
-| `publish --repo <o/n> --tag <vX.Y.Z> [--sign [key]] [--no-preflight] [--draft] [--registry <owner/name>] [--notes <text>]` | git + `gh` (authed) | **One-command release:** pack → tag + GitHub release → preflight → registry PR. Stops before submitting if preflight fails — **`--no-preflight` skips that safety gate** (don't, in general). Works for every type incl. `trip-page` on the current SDK. |
-| `keygen [--key <file>]` | — | Creates a dependency-free Ed25519 signing key (default `~/.trek-plugin/signing.key`; back it up!). |
+| `publish --repo <o/n> --tag <vX.Y.Z> [--sign [key]] [--no-preflight] [--force] [--draft] [--registry <owner/name>] [--notes <text>]` | git + `gh` (authed) | **One-command release:** pack → tag + GitHub release → preflight → registry PR. Stops before submitting if preflight fails — **`--no-preflight` skips that safety gate** (don't, in general). **Refuses to overwrite an existing release** (`release vX.Y.Z already exists on …`) — a released artifact is immutable, and rewriting its bytes breaks the sha256 pin for everyone who already installed that version. **`--force` overrides**, and is only ever safe if that release was *never merged into the registry*; otherwise cut a new version. It also **keeps `plugin.zip`** on exit — those are the exact bytes the release and the pin were computed from, so re-run `entry`/`sign` against *that* file, never a rebuild. |
+| `keygen [--key <file>]` | — | Creates a dependency-free Ed25519 signing key (default `~/.trek-plugin/signing.key`, mode 0600). **Run this once, ever — one key covers all your plugins — and back it up off-machine.** It **refuses to overwrite** an existing key, so you can't clobber it by accident; you can only lose it. |
 | `sign [zip] [--key <file>]` | key | **Prints** `signature` + `authorPublicKey` for an artifact (default `plugin.zip`) — does **not** modify any entry. |
 
-`--sign [key]` on `entry`/`release`/`submit`/`publish` is what actually **writes**
-`authorPublicKey` + `signature` into the generated entry (default key
-`~/.trek-plugin/signing.key`, or an inline path / `--key`). `submit`/`entry
---merge` refuse a *different* key or an *unsigned* update to a signed plugin.
+**Pass `--sign` on every publish.** It is what actually **writes** `authorPublicKey` +
+`signature` into the generated entry (on `entry`/`release`/`submit`/`publish`; default key
+`~/.trek-plugin/signing.key`, or an inline path / `--key`). The standalone `sign [zip]`
+only *prints* them. Without `--sign` you ship an unsigned entry — which installs fine, but
+proves only that the *registry* served those bytes, not that **you** built them. See
+[publishing.md](publishing.md#signing--do-it-starting-at-v100).
+
+Once you're signed, stay signed: `submit`/`entry --merge` refuse a *different* key or an
+*unsigned* update to an already-signed plugin — and so does registry CI, and so does every
+TREK instance that already has it.
+
+## Flags, help, exit codes
+
+**An unknown flag is a hard error.** Each command declares exactly which flags it reads,
+and anything else fails with `unknown flag(s) for \`<cmd>\`: --x` plus the accepted list.
+This is deliberate: flags used to be parsed permissively and silently dropped if the
+command didn't read them, so `create --template notification-channel` cheerfully
+scaffolded a **blank** plugin. Silently ignoring an explicit instruction is worse than
+refusing it — so if you get this error, the flag genuinely does nothing on that command.
+
+`--help` / `-h` / `help` prints usage on **stdout** and exits **0** (it is intercepted
+before the unknown-flag check, so it always works).
+
+Exit codes: **0** success or help · **1** any error (validation, preflight failure,
+unknown flag) · **2** no command / unrecognized command (usage on stderr).
 
 ## Interactive mode
 
@@ -72,24 +93,30 @@ archives. Limits: **25 MB per file, 50 MB total, 4000 entries**.
 New plugin, fast path:
 
 ```bash
+npx trek-plugin-sdk keygen                       # ONCE, ever — then back the key up
 npx trek-plugin-sdk create my-widget --type widget
 cd my-widget && npx trek-plugin-sdk dev
 # … develop, fill README, commit docs/screenshot.png, push to public repo …
 npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0 --sign
 ```
 
-By hand (no `gh`, manual PR):
+By hand (no `gh`, manual PR) — still sign:
 
 ```bash
 npx trek-plugin-sdk validate .
 npx trek-plugin-sdk pack .
 # create the GitHub release yourself, attach plugin.zip, then:
 git fetch origin --tags   # if gh created the tag remotely, entry needs it locally
-npx trek-plugin-sdk entry --repo you/trek-plugin-my-widget --tag v1.0.0 \
+npx trek-plugin-sdk entry --repo you/trek-plugin-my-widget --tag v1.0.0 --sign \
   --out registry/plugins/my-widget.json
 npx trek-plugin-sdk preflight --repo you/trek-plugin-my-widget --tag v1.0.0
 # fork TREK-Plugins, add ONLY that file, open the PR
 ```
+
+⚠️ **`entry --sign` signs the LOCAL `plugin.zip`** — so it must be byte-identical to the
+asset you uploaded, or the signature verifies against bytes nobody can download and CI
+rejects it. `publish` keeps `plugin.zip` for exactly this reason: sign *that* file, never
+a re-pack. `preflight` is what catches a mismatch, so always run it.
 
 Update (v1.1.0):
 

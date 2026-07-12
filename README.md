@@ -8,7 +8,7 @@ and its community registry
 
 ## What the agent learns
 
-- The plugin model: `integration` / `page` / `widget`, the isolated
+- The plugin model: `integration` / `page` / `widget` / `trip-page`, the isolated
   child-process runtime, and the sandboxed iframe UI.
 - `trek-plugin.json`: every manifest field, the full permission catalog, and
   the `http:outbound:<host>` vs `egress[]` trap.
@@ -21,8 +21,13 @@ and its community registry
 - The whole `trek-plugin` CLI (`create`, `dev`, `validate`, `pack`, `entry`,
   `release`, `preflight`, `submit`, `publish`, `keygen`/`sign`).
 - Publishing: GitHub releases, the registry entry schema, **every CI gate**
-  of the TREK-Plugins repo (entry + README quality gates), signing (TOFU),
-  and the update flow.
+  of the TREK-Plugins repo (entry + README quality gates, **author-signature
+  verification** and the signing-downgrade guard), the maintainer-override
+  labels, and the update flow.
+- **Signing (and why to do it):** the skill steers authors to `keygen` + `--sign`
+  from v1.0.0 — the sha256 pin only proves the *registry* served those bytes; the
+  signature proves *the author built them*. It also spells out the commitment
+  (signing is a one-way door, TOFU-pinned) and how to look after the key.
 
 ## Layout
 

@@ -16,10 +16,13 @@ step at install time.
   `style-src 'self' 'unsafe-inline'` · `img-src 'self' data: blob:` ·
   `font-src 'self' data:` · `connect-src 'self' https://<each granted host>` ·
   `frame-ancestors 'self'` · `base-uri 'none'` · `form-action 'self'` ·
-  `sandbox allow-scripts allow-forms`. `connect-src` hosts come from the granted
-  `http:outbound:<host>` permissions (see the egress trap in
-  [manifest.md](manifest.md)), plus the plugin's **own asset path** — see
-  [What the CSP allows](#what-the-csp-allows--images-fonts-bundled-assets).
+  `sandbox allow-scripts allow-forms`. `connect-src` hosts are the **union of** the
+  granted `http:outbound:<host>` permissions (see the egress trap in
+  [manifest.md](manifest.md)) **and any hosts an admin added post-install** for an
+  `operatorEgress` plugin — i.e. **exactly what the server side of your plugin may
+  reach**, so a self-hosted target (a Gotify, an ntfy) that the admin configured works
+  from the iframe too, not just from your routes. Plus the plugin's **own asset path** —
+  see [What the CSP allows](#what-the-csp-allows--images-fonts-bundled-assets).
 - Height: sidebar and scoped-detail widgets request size via `trek:resize`
   (capped at 2000 px); `page`/`trip-page` frames are **fill-mode** — see §5.
 
@@ -144,7 +147,7 @@ but **no external host is ever reachable**:
 | `@font-face` from a bundled `.woff2` | ✅ | Own path is in `font-src` |
 | A multi-file Vite/React build (`./assets/*.js`, `*.css`) | ✅ | Own path is in `script-src`/`style-src` — no inlining needed |
 | `<img src="https://cdn…/x.png">` | ❌ | No external host in `img-src` |
-| Google Fonts / any external stylesheet, script, or font | ❌ | External hosts are never allow-listed (only granted `http:outbound:<host>` hosts, and those only in `connect-src`) |
+| Google Fonts / any external stylesheet, script, or font | ❌ | External hosts are never allow-listed (only your egress hosts — granted `http:outbound:<host>` plus admin-added `operatorEgress` hosts — and those only in `connect-src`, i.e. `fetch`/XHR, never as a script/style/font source) |
 
 Caveats and consequences:
 
