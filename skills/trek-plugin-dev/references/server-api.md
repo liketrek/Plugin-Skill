@@ -81,7 +81,7 @@ export interface PluginDefinition {
     atlasLayerProvider?: AtlasLayerProvider;   // hook:atlas-layer-provider
     journalEntryProvider?: JournalEntryProvider; // hook:journal-entry-provider
     tripCardProvider?: TripCardProvider;       // hook:trip-card-provider
-    notificationChannel?: NotificationChannel; // hook:notification-channel — USERLESS; recipient's settings as config
+    notificationChannel?: { send(msg, config, ctx); test?(config, ctx) }; // hook:notification-channel — USERLESS; config = recipient's settings
   };
   actions?: Record<string, (ctx) => Promise<{ ok: boolean; message?: string }>>; // manifest `actions` buttons — user-bound
 }
@@ -337,12 +337,15 @@ iframe of its own:
 **strings** — the host↔plugin boundary is JSON).
 
 A plugin can also be a **notification delivery channel**
-(`hook:notification-channel` + `capabilities.notificationChannel.events`):
-implement `hooks.notificationChannel` and TREK routes matching notifications
-(e.g. `trip_invite`, `booking_change`, `trip_reminder`) through your plugin —
-Telegram/Gotify/webhook delivery without touching core. The hook runs
-**userless**, receiving the recipient's decrypted per-user settings as its
-config. `create --template notification-channel` scaffolds one.
+(`hook:notification-channel` + `capabilities.notificationChannel.events`, the
+fixed 10-event set in [manifest.md](manifest.md)): implement
+`hooks.notificationChannel.send(msg, config, ctx)` (+ optional
+`test(config, ctx)` behind the "Send test" button) and TREK routes matching
+notifications through your plugin — Telegram/Gotify/webhook delivery without
+touching core. The hook runs **userless**; `config` is the **recipient's**
+decrypted per-user settings, so one active plugin serves every user who
+configured it (typically a self-hosted endpoint declared with
+`operatorEgress: true`). `create --template notification-channel` scaffolds one.
 
 There is also a **data-rights hook** `hook:user-data`: define
 `deleteUserData(userId, ctx)` / `exportUserData(userId, ctx)` and the host calls

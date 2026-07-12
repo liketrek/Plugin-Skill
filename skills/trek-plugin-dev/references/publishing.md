@@ -87,7 +87,7 @@ Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
 | `nativeModules` | Literally `false` (const). |
 | `signature` | Optional base64 **raw Ed25519** signature (the 64-byte sig) over the artifact bytes; requires `authorPublicKey` on the entry. |
 | `publishedAt` | Optional ISO date-time. |
-| `operatorEgress` | Optional boolean; `entry` emits it **only when true**. **Must mirror the manifest** (parity gate; `preflight` replays this one). Allows an empty `egress[]` — the admin supplies the hosts at runtime. |
+| `operatorEgress` | Optional boolean. **`entry` copies it from the manifest automatically** (emitted only when `true`) and `preflight` replays the parity check — no hand-editing. **Must mirror the manifest** (registry parity gate). Allows an empty `egress[]`; the admin supplies the hosts at runtime. Requires an `http:outbound` permission. |
 | `requiredAddons` | Optional array (≤ 16) of addon ids (`^[a-z][a-z0-9_]{1,39}$`, e.g. `["budget"]`) that must be enabled in TREK for this version to activate. **Must mirror the manifest** (parity gate). |
 | `pluginDependencies` | Optional array (≤ 32) of `{ id, version }` — other plugins this version needs, each pinned by a semver range (`id` `^[a-z][a-z0-9-]{2,39}$`, `version` a range string ≤ 100 chars). **Must mirror the manifest** (parity gate). |
 
@@ -98,12 +98,14 @@ shape is `schema/example-entry.json`; the authority is
 keys).
 
 > **Trap — the SDK's `entry` does NOT copy `requiredAddons`/`pluginDependencies`.**
-> `buildEntry` fills only `homepage`/`tags`/`authorPublicKey` beyond the core
-> fields, so if you declare `requiredAddons`/`pluginDependencies` in
-> `trek-plugin.json` you must **hand-add the identical arrays to the entry** or
+> `buildEntry` fills only `homepage`/`tags`/`authorPublicKey`/`operatorEgress`
+> beyond the core fields, so if you declare `requiredAddons`/`pluginDependencies`
+> in `trek-plugin.json` you must **hand-add the identical arrays to the entry** or
 > the registry's parity gate fails
-> (`manifest requiredAddons != entry requiredAddons`). If you use neither, both
-> default to `[]` and you're unaffected. **TREK enforces these at activation**:
+> (`manifest requiredAddons != entry requiredAddons`). Declare neither and both
+> default to `[]` — you're unaffected. (**`operatorEgress` is the exception among
+> these registry fields — `entry`/`preflight` copy it from the manifest
+> automatically, so never hand-edit it.**) **TREK enforces the deps at activation**:
 > a plugin whose required addon is disabled (or whose plugin dependency is
 > missing/mismatched) can't activate, disabling an addon cascades to dependent
 > plugins, dependency cycles are rejected, and installing from the registry
