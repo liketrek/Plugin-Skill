@@ -63,7 +63,7 @@ export interface PluginDefinition {
   onLoad?(ctx: PluginContext): Promise<void> | void;
   onUnload?(ctx: PluginContext): Promise<void> | void;
   routes?: PluginRoute[];
-  jobs?: PluginJob[];               // declared but not scheduled (see above)
+  jobs?: PluginJob[];               // run via node-cron under jobs:run (see above)
   events?: PluginEventSubscription[]; // WIRED reactive hook — needs events:subscribe
   scheduled?(input: { name: string; payload?: unknown }, ctx): Promise<void> | void; // ctx.scheduler callbacks (jobs:run)
   deleteUserData?(userId: number, ctx): Promise<void> | void; // hook:user-data — GDPR erasure, userless
@@ -81,7 +81,9 @@ export interface PluginDefinition {
     atlasLayerProvider?: AtlasLayerProvider;   // hook:atlas-layer-provider
     journalEntryProvider?: JournalEntryProvider; // hook:journal-entry-provider
     tripCardProvider?: TripCardProvider;       // hook:trip-card-provider
+    notificationChannel?: NotificationChannel; // hook:notification-channel — USERLESS; recipient's settings as config
   };
+  actions?: Record<string, (ctx) => Promise<{ ok: boolean; message?: string }>>; // manifest `actions` buttons — user-bound
 }
 
 // core-event subscription — see "Event subscriptions" below
@@ -123,7 +125,7 @@ export interface PluginContext {
   settings: { get(key: string): Promise<unknown> };   // acting user's own scope:'user' value; undefined if unset/userless
   // reads return typed entities (Trip/Place/Day/Reservation/PackingItem/
   // TripFile/BudgetItem/Assignment/User) — but only `id` is guaranteed; every shape
-  // keeps an index signature and mirrors the raw DB row, so treat other fields as
+  // keeps an index signature and mirrors the raw DB row, so treat other fields as optional.
   trips: {
     getById(tripId, asUserId?): Promise<Trip | null>; getPlaces(...): Promise<Place[]>; getReservations(...): Promise<Reservation[]>;
     update(tripId: number, input: Record<string, unknown>): Promise<Trip>;      //
@@ -286,6 +288,14 @@ never holds a key/secret; the host brokers the call:
 - **`ctx.oauth.getAccessToken()` → `string | null`** (`oauth:client`) — a
   short-lived token for a service the user connected via **Settings → Plugins →
   Connect**; `null` when userless or not connected. Route-only in practice.
+  **Wiring the broker:** declare five `scope:'instance'` settings named exactly
+  `oauth_authorize_url`, `oauth_token_url`, `oauth_scopes` (optional),
+  `oauth_client_id`, `oauth_client_secret`; the admin fills them, and the
+  **host** runs the whole PKCE+state flow (`POST /api/plugin-oauth/<id>/connect`
+  → provider → callback → redirect to `/settings?oauth=<id>:connected|denied|failed`,
+  plus `/status` and `/disconnect`). Tokens are per-user, encrypted, and
+  auto-refreshed (60 s skew); endpoints must be `https` and pass an SSRF gate;
+  the plugin **never sees** the refresh token or client secret.
 - **`ctx.rates.get(…)`** (`rates:read`) and **`ctx.weather.get(…)`**
   (`weather:read`) — currency rates / weather-by-coords, host-cached and
   **tenant-free**, so they work from jobs/scheduler too.
@@ -321,6 +331,14 @@ iframe of its own:
 (`plugin-photos.controller.ts` / `plugin-calendar.controller.ts` consume them;
 `CalendarSource.getEvents(userId, start, end)` takes `start`/`end` as ISO
 **strings** — the host↔plugin boundary is JSON).
+
+A plugin can also be a **notification delivery channel**
+(`hook:notification-channel` + `capabilities.notificationChannel.events`):
+implement `hooks.notificationChannel` and TREK routes matching notifications
+(e.g. `trip_invite`, `booking_change`, `trip_reminder`) through your plugin —
+Telegram/Gotify/webhook delivery without touching core. The hook runs
+**userless**, receiving the recipient's decrypted per-user settings as its
+config. `create --template notification-channel` scaffolds one.
 
 There is also a **data-rights hook** `hook:user-data`: define
 `deleteUserData(userId, ctx)` / `exportUserData(userId, ctx)` and the host calls

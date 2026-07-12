@@ -53,11 +53,11 @@ npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0
 #    Add --sign to sign the artifact (recommended). Requires git + gh (authed).
 ```
 
-Update flow: bump `version` in the manifest, re-pack, new `vX.Y.Z` tag/release
-(asset attached **before** `entry` — else `artifact not found`), then
-`entry --merge` onto the existing registry file (newest version first) and PR it.
-There's also a hand-edit path for updating an entry by hand — see "Updating a
-published plugin" in [references/publishing.md](references/publishing.md).
+Update flow: bump `version` in the manifest, re-pack, new `vX.Y.Z` tag/release,
+then `entry --merge` onto the existing registry file (newest version first) and
+PR it. `entry` hashes your **local** `plugin.zip` — make sure it's the same file
+you uploaded as the release asset. There's also a hand-edit path — see "Updating
+a published plugin" in [references/publishing.md](references/publishing.md).
 
 ## Build the UI / store shot *with* the user, not for them
 
@@ -260,7 +260,11 @@ inject native UI or honour data-rights with no iframe. See
   `TREK_PLUGINS_DEV_LINK=1` enables the **DEV-ONLY** dev-link workflow
   (link/reload a local build against real data — off by default, **never set in
   production**; see [references/cli.md](references/cli.md#dev-link--run-your-local-build-inside-a-real-instance-330-dev-only)),
-  and the RPC-limit knobs `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`.
+  the RPC-limit knobs `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`, and the
+  log rate-limit knobs `TREK_PLUGIN_LOG_BURST` / `_PER_SEC` (defaults 50/10).
+- **Per-plugin activity log:** every user can audit what plugins did in their
+  name at `GET /api/plugin-activity` (hash-chained audit trail) — design write
+  paths knowing each call is user-visible.
 - ** Backups include plugins:** TREK backup/restore now archives each
   plugin's per-plugin SQLite data tree **and** installed code (staged and swapped
   in on next boot), so a restore no longer loses plugin state. Older archives

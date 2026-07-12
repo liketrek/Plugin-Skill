@@ -78,7 +78,8 @@ GET/POST endpoints (the browser-side mirror of `run(def)`):
 
 Query params become the payload; a JSON body is used verbatim.
 `job`/`scheduled`/`event`/GDPR fire against the **userless** ctx (membership reads
-refuse, like prod); **hooks stay user-bound**. The endpoints are cross-site-guarded
+refuse, like prod); **hooks stay user-bound — except `notificationChannel`,
+which is userless like in production**. The endpoints are cross-site-guarded
 (`Sec-Fetch-Site`/`Origin`) and loopback-only.
 
 ## Dev kit — screenshots + reproducible builds in one step
@@ -259,6 +260,7 @@ export interface MockHostOptions {
   config?: Record<string, unknown>;         // becomes ctx.config (frozen)
   actingUserId?: number;                    // host-bound user — required for any costs.*
   budgetAddonEnabled?: boolean;             // default true; false → RESOURCE_FORBIDDEN
+  declaredActions?; channelEvents?;   // manifest `actions` / notificationChannel events for the driver
   // addon-enable flags (each defaults true; false → RESOURCE_FORBIDDEN):
   journeyAddonEnabled?; atlasAddonEnabled?; vacayAddonEnabled?; collectionsAddonEnabled?; collabAddonEnabled?: boolean;
   // inter-plugin + per-user + broker fixtures:
@@ -285,7 +287,7 @@ export interface MockHostOptions {
 export interface MockHost {
   ctx: PluginContext;
   userlessCtx: PluginContext;                          // the ctx a job/scheduled/event/GDPR handler gets — NO acting user
-  calls: { method: string; args: unknown[] }[];        // permission-checked call names (db/trips/users/ws — not log).
+  calls: { method: string; args: unknown[] }[];        // every permission-gated call records here (not log).
                                                        // args is [] for those; settings.get/plugins.call/events.emit push REAL args
   logs: { level: string; msg: string }[];
   broadcasts: { kind: 'trip' | 'user'; target: number; event: string; data: unknown }[];
@@ -315,10 +317,13 @@ await drv.event('place:created', payload)          // userless
 await drv.pluginEvent('other-plugin', 'rate.updated', payload) // userless
 await drv.deleteUserData(42); await drv.exportUserData(42)     // userless GDPR
 await drv.hook('placeDetailProvider', 'getDetails', placeId)  // user-bound
+await drv.action('test_connection')          // manifest `actions` button, user-bound
+await drv.channel.send(payload); await drv.channel.test()  // notification channel
 ```
 
-**Routes and hooks run user-bound; `job`/`scheduled`/`event`/`pluginEvent`/GDPR
-run against `userlessCtx`** — so a membership read from a background job fails in
+**Routes, hooks and `action()` run user-bound; `job`/`scheduled`/`event`/
+`pluginEvent`/GDPR — and the `notificationChannel` hook — run against
+`userlessCtx`** — so a membership read from a background job fails in
 test exactly as it would in production. Use it as the **primary way** to test
 jobs, scheduled timers, event/plugin-event subscriptions, GDPR export/delete, and
 provider hooks.
