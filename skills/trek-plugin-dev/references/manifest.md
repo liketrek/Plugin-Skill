@@ -13,7 +13,7 @@ registry CI, and the TREK install loader all apply the **same** rules
 | `version` | string | **yes** | Semver `\d+.\d+.\d+` with optional pre-release (`1.2.3`, `1.2.3-beta.1`). Must equal the git tag (`v` prefix) of the release. |
 | `type` | string | **yes** | `integration` \| `page` \| `widget` \| `trip-page` — `trip-page` mounts a full-frame tab inside every trip planner (scoped to the open trip), no dashboard presence. |
 | `apiVersion` | number | no | Plugin API version; currently `1` (SDK constant `PLUGIN_API_VERSION`). Defaults to `1`. Must be a number, not a string. **Not enforced at install** — the server accepts any numeric value with no version negotiation. `trek` (below) is what actually gates compatibility. |
-| `trek` | string | **yes** | The TREK versions you support, as a semver **range**: `">=3.3.1 <4.0.0"`. **Enforced since TREK 3.3.1, at install *and* activation** — see below. Validated as a *satisfiable* range (`">=4.0.0 <3.0.0"` parses but nothing can satisfy it → rejected). It is the **only** compatibility field the registry entry needs — `entry` copies it verbatim, and the older `minTrekVersion`/`maxTrekVersion` are deprecated (they only restated the lower bound, and could not express an exclusive ceiling). |
+| `trek` | string | **yes** | The TREK versions you support, as a semver **range**: `">=3.4.0 <4.0.0"`. **Enforced since TREK 3.4.0, at install *and* activation** — see below. Validated as a *satisfiable* range (`">=4.0.0 <3.0.0"` parses but nothing can satisfy it → rejected). It is the **only** compatibility field the registry entry needs — `entry` copies it verbatim, and the older `minTrekVersion`/`maxTrekVersion` are deprecated (they only restated the lower bound, and could not express an exclusive ceiling). |
 | `author` | string | no | Shown in the store. |
 | `description` | string | no | One-line store summary. **The 200-char cap binds the registry *entry*, not the manifest** — manifest parity never compares `description`, so entry and manifest may legitimately differ. But `buildEntry` copies it verbatim and `validate`/`pack` don't check length, so a > 200-char manifest description fails registry CI **after** you've cut the release. Either keep it ≤ 200 chars here, or hand-shorten the entry's `description` afterwards (allowed). Min 5 chars on the entry side. |
 | `icon` | string | no | lucide-react icon name (default `Blocks`). Shown on the **Admin → Plugins** row/store card. **Note:** a page's top-nav entry uses `name` as its label but a **fixed `Blocks` icon** — the declared `icon` is *not* used for nav. |
@@ -38,9 +38,9 @@ does not consume:** `routes[]` (real routes come from the loaded `definePlugin`
 object) and `capabilities.nav` (a page's nav entry uses top-level `name` as its
 label; the icon is a fixed `Blocks` glyph, not the manifest `icon`).
 
-## The `trek` range is enforced (TREK ≥ 3.3.1)
+## The `trek` range is enforced (TREK ≥ 3.4.0)
 
-Older guidance called this advisory. It isn't, and hasn't been since 3.3.1. TREK
+Older guidance called this advisory. It isn't, and hasn't been since 3.4.0. TREK
 now treats your range as a hard contract, in both directions:
 
 - **Install** is refused when the running TREK is outside it — on *every* path:
@@ -213,7 +213,7 @@ deactivate→activate). `scope: user` settings are **not** surfaced to server
   "version": "1.0.0",
   "apiVersion": 1,
   "type": "widget",
-  "trek": ">=3.3.1 <4.0.0",
+  "trek": ">=3.4.0 <4.0.0",
   "author": "You",
   "description": "Live flight status on the dashboard.",
   "icon": "Plane",
@@ -250,7 +250,7 @@ deactivate→activate). `scope: user` settings are **not** surfaced to server
   "license": "MIT",
   "icon": "Luggage",
   "type": "widget",
-  "trek": ">=3.3.1 <4.0.0",
+  "trek": ">=3.4.0 <4.0.0",
   "nativeModules": false,
   "permissions": ["db:read:trips"],
   "capabilities": {

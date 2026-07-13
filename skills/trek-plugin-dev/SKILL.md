@@ -165,9 +165,9 @@ inject native UI or honour data-rights with no iframe. See
    need trip access, writes the entity's edit permission). **Heads-up: these
    enrichment namespaces (`meta`/`places`/`days`/`itinerary`/`costs`/`packing`/`files`/
    `trips.update`) can be `undefined` on a host that predates them.** Your
-   `"trek"` range is what prevents that, and **since TREK 3.3.1 it is enforced**:
+   `"trek"` range is what prevents that, and **since TREK 3.4.0 it is enforced**:
    an instance outside the range refuses to install *or* activate your plugin. So
-   declare it honestly — `"trek": ">=3.3.1 <4.0.0"` — and the namespaces you need
+   declare it honestly — `"trek": ">=3.4.0 <4.0.0"` — and the namespaces you need
    are guaranteed present on every host that can run you.
    **Still guard anyway**, for the one hole the gate leaves: a host whose
    `APP_VERSION` is not a semver version (the Docker default is the literal `dev`)
@@ -305,7 +305,7 @@ inject native UI or honour data-rights with no iframe. See
   without them are a no-op.
 - Installed plugins must be activated one by one; a version bump that requests
   **more** permissions requires the admin to re-approve.
-- **The `trek` range is enforced (TREK ≥ 3.3.1), at install AND at activation.**
+- **The `trek` range is enforced (TREK ≥ 3.4.0), at install AND at activation.**
   Install is refused on every path (registry, pinned version, update, sideload,
   dev-link) when the running TREK is outside your range, and *activation* re-checks
   it — so a plugin installed on 3.3 stops starting once the operator upgrades past

@@ -33,7 +33,7 @@ Fidelity details:
   permission/membership/addon gates as production.
   - ⚠️ **Dev parity is exactly why you must still guard in production code.** Dev has
     every namespace, and so does any host inside your `trek` range — which TREK now
-    enforces at install and activation (≥ 3.3.1), so an honest range means the
+    enforces at install and activation (≥ 3.4.0), so an honest range means the
     namespaces you call are there. But the gate is **skipped on a host with a
     non-semver `APP_VERSION`** (Docker's default is the literal `dev`), and such an
     instance will install your plugin regardless of its age and genuinely lack

@@ -254,12 +254,12 @@ export interface PluginContext {
 > at call time (`PERMISSION_DENIED`), not by omitting the object. What you are seeing is
 > **version skew** — a host whose runtime genuinely predates the namespace.
 >
-> Your `"trek"` range is what prevents this, and **since TREK 3.3.1 the server enforces
+> Your `"trek"` range is what prevents this, and **since TREK 3.4.0 the server enforces
 > it** at install *and* activation (see [manifest.md](manifest.md)): an instance outside
 > your range cannot install or start your plugin at all.
 >
 > Two consequences:
-> - Set `"trek"` honestly (`">=3.3.1 <4.0.0"`). It is now load-bearing, not a hint: it is
+> - Set `"trek"` honestly (`">=3.4.0 <4.0.0"`). It is now load-bearing, not a hint: it is
 >   what *guarantees* the namespaces you call exist on every host that can run you — and
 >   what stops an old instance installing you and failing at runtime.
 > - **Still guard.** The gate is skipped on a host whose `APP_VERSION` is not a semver
@@ -497,7 +497,7 @@ code**, e.g. `"PERMISSION_DENIED: …"` — catch and match on that.
   only** — the host stores it but does not mount or drive it (like manifest
   `routes[]`). Implement the flow yourself with your own routes: an `auth:false`
   callback whose redirect is a relative in-app path (see Routes).
-- Version compatibility: the manifest's **`trek` range IS enforced** (TREK ≥ 3.3.1)
+- Version compatibility: the manifest's **`trek` range IS enforced** (TREK ≥ 3.4.0)
   at install and at activation, with no admin override — see
   [manifest.md](manifest.md). `apiVersion` is **not**: the server accepts any
   numeric value and never compares it to `PLUGIN_API_VERSION`, so the `trek` range
