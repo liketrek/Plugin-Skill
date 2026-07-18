@@ -2,12 +2,12 @@
 """Package the skill for distribution.
 
 Produces dist/<skill>-<version>.zip containing a single top-level directory with
-SKILL.md at its root — the layout the Claude Skills API expects on upload, and
-what you get by unzipping into ~/.claude/skills or ~/.agents/skills.
+SKILL.md at its root — the layout the skill upload dialog on claude.ai requires,
+and what you get by unzipping into ~/.claude/skills or ~/.agents/skills.
 
-A .skill copy is written alongside it. Nothing consumes that extension: neither
-Claude Code nor Codex has a handler for it. It is byte-identical to the zip and
-exists only as a friendlier download name.
+A byte-identical .skill copy is written alongside it. The upload dialog accepts
+either extension; .skill is the one it names first, so it is the friendlier
+thing to hand someone.
 
 The archive is reproducible — entries are sorted and every timestamp is pinned,
 so the same input always yields the same sha256.
@@ -53,6 +53,6 @@ skill_path = dist / f"{SKILL}-{version}.skill"
 shutil.copyfile(zip_path, skill_path)
 
 print(f"✔ {zip_path.relative_to(ROOT)} ({zip_path.stat().st_size:,} bytes, {len(files)} files)")
-print(f"✔ {skill_path.relative_to(ROOT)} (identical bytes; no tool consumes this extension)")
+print(f"✔ {skill_path.relative_to(ROOT)} (identical bytes; upload either one to claude.ai)")
 for path in files:
     print(f"   {path.relative_to(src.parent)}")
