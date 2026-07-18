@@ -1,0 +1,30 @@
+{
+  "name": "trek-plugin-dev",
+  "version": "3.4.0",
+  "description": "Build, test, sign, and publish plugins for TREK, the self-hosted travel planner.",
+  "author": {
+    "name": "fbnlrz",
+    "url": "https://github.com/fbnlrz"
+  },
+  "homepage": "https://github.com/liketrek/Plugin-Skill",
+  "repository": "https://github.com/liketrek/Plugin-Skill",
+  "license": "MIT",
+  "keywords": [
+    "trek",
+    "plugin",
+    "skill",
+    "trek-plugin-sdk"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TREK Plugin Dev",
+    "shortDescription": "Build, test, and publish TREK plugins",
+    "longDescription": "Covers the trek-plugin.json manifest and its permission catalog, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge, egress rules, the trek-plugin-sdk CLI, Ed25519 author signing, and the TREK-Plugins registry with every CI gate.",
+    "developerName": "fbnlrz",
+    "category": "Developer Tools",
+    "websiteURL": "https://github.com/liketrek/Plugin-Skill",
+    "defaultPrompt": [
+      "Scaffold a TREK plugin and wire up its manifest permissions"
+    ]
+  }
+}

@@ -1,10 +1,19 @@
 {
   "_comment": "Save next to trek-plugin.json as dev-fixtures.json. Feeds the `trek-plugin-sdk dev` server: config -> ctx.config, and trips/users for ctx.trips/ctx.users. `members` gates access like the real host.",
-  "config": { "api_key": "test-key" },
+  "config": {
+    "api_key": "test-key"
+  },
   "trips": {
     "1": {
-      "members": [1],
-      "data": { "id": 1, "title": "Japan", "start_date": "2026-08-01", "end_date": "2026-08-14" }
+      "members": [
+        1
+      ],
+      "data": {
+        "id": 1,
+        "title": "Japan",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-14"
+      }
     }
   },
   "users": {}

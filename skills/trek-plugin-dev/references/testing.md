@@ -23,23 +23,44 @@ Fidelity details:
 - The injected `ctx` **enforces exactly the permissions your manifest
   grants** — an ungranted call throws `PERMISSION_DENIED`, so you catch a
   missing grant before install.
-- **Dev `ctx` has FULL parity.** `createDevContext` wraps the same
-  **grant-enforcing `createMockHost`** and overrides only `db:own` (real
+- **So does everything outside `ctx`.** Hooks, event subscriptions, jobs and outbound
+  network are gated by TREK *before* your `ctx` is ever reached, and dev now gates them
+  too — see [What dev enforces](#what-dev-enforces-hooks-events-jobs-egress) below.
+  **(New in SDK 1.5.0.** On 1.4.x and earlier dev checked `ctx` only, so an undeclared
+  hook fired happily in dev and was silently never called in production. If you are on an
+  older SDK, upgrade — that class of bug is invisible otherwise.)
+- **Dev `ctx` has full parity — `ctx` specifically.** `createDevContext` wraps the
+  same **grant-enforcing `createMockHost`** and overrides only `db:own` (real
   `node:sqlite`), `ws` (captured broadcasts), and `log` (console). **Every** other
   namespace — `costs`/`packing`/`files`/`meta`/`places`/`days`/`itinerary`/
   `notify`/`ai`/`settings`/`scheduler`/`oauth`/`weather`/`rates`/`journal`/`atlas`/
   `vacay`/`collections`/`collab`/`tags`/`todos`/`daynotes`/`accommodations`/
   `reservations`/`plugins`/`events` — **works in dev** under the same
   permission/membership/addon gates as production.
-  - ⚠️ **Still guard optional namespaces in production code** — enrichment
-    namespaces like `ctx.meta` have been observed partly `undefined` on real
-    hosts, and the throw is **synchronous at property access** (so
-    `await attempt(ctx.meta.get(x))` doesn't catch it — use a thunk:
-    `attempt(() => ctx.meta.get(x))`). Treat `db:own` as the source of truth and
-    mirror to `ctx.meta` best-effort (see
-    [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
-- `db:own` is backed by a real SQLite file at `.trek-dev/db.sqlite` when the
-  Node runtime has `node:sqlite`.
+    - ⚠️ **Dev parity is exactly why you must still guard in production code.** Dev has
+      every namespace, and so does any host inside your `trek` range — which TREK now
+      enforces at install and activation (≥ 3.4.0), so an honest range means the
+      namespaces you call are there. But the gate is **skipped on a host with a
+      non-semver `APP_VERSION`** (Docker's default is the literal `dev`), and such an
+      instance will install your plugin regardless of its age and genuinely lack
+      `ctx.meta` (etc.). Dev will never reproduce that. The throw is
+      **synchronous at property access** (so `await attempt(ctx.meta.get(x))` does *not*
+      catch it — use a thunk: `attempt(() => ctx.meta.get(x))`). Treat `db:own` as the
+      source of truth and mirror to `ctx.meta` best-effort (see
+      [server-api.md](server-api.md#ctx-semantics-and-required-permissions)).
+- `db:own` is backed by a real SQLite file at `.trek-dev/db.sqlite` — but this
+  needs **`node:sqlite`, i.e. Node 22.5+**. ⚠️ **On an older Node, `ctx.db` degrades to an
+  in-memory STUB that silently DISCARDS every write while reporting success** (queries
+  return `[]`, writes report `0 changes`) — so a `db:own` plugin appears to work in dev
+  and persists **nothing**. The dev server prints a loud warning when this happens; if
+  you are testing `db:own`, read it and **upgrade to Node 22.5+**, don't work around it.
+  A *real* failure (a bad path, a permission error) now **fails loudly** instead of
+  quietly falling back to the stub.
+- The dev server fires `notificationChannel` with the **host's real signature** —
+  `send(msg, config, ctx)` / `test(config, ctx)`, where `config` is the *recipient's*
+  settings and there is **no acting user**. (Older SDKs passed `ctx` where `config`
+  belongs, so a channel plugin that read its settings off `ctx` "worked" in dev and was
+  broken in production. If you're on an older SDK, test against the real signature.)
 - Simulate an unauthenticated request with `?_anon=1` — an `auth: true` route
   then returns 401, mirroring the host.
 - Feed `ctx.*` with fixtures: drop a `dev-fixtures.json` next to the manifest. It
@@ -82,6 +103,85 @@ refuse, like prod); **hooks stay user-bound — except `notificationChannel`,
 which is userless like in production**. The endpoints are cross-site-guarded
 (`Sec-Fetch-Site`/`Origin`) and loopback-only.
 
+⚠️ **`/__dev/fire/*` refuses an entry point your manifest never granted** — a 403, not a
+silent no-op. See the next section.
+
+## What dev enforces: hooks, events, jobs, egress
+
+`ctx` is not the only thing TREK gates. Four permission families are checked **before
+your `ctx` is ever reached** — and when one is missing, production does not throw, it
+just **never calls you**. No error, no log. Ship a `warningProvider` without
+`hook:trip-warning-provider` and TREK installs the plugin, activates it, and silently
+never invokes the hook; all you see is "my plugin does nothing."
+
+Dev refuses the same four, **loudly** (SDK ≥ 1.5.0):
+
+| Permission                                        | Production when it's MISSING                                                                                    | Dev                                                               |
+|---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
+| `hook:<name>` (e.g. `hook:trip-warning-provider`) | The supervisor **silently skips you** — the hook is never invoked                                               | ⚠️ warns at load; `/__dev/fire/hook/<provider>/<fn>` → **403**    |
+| `hook:user-data`                                  | `deleteUserData` / `exportUserData` are never called                                                            | ⚠️ warns at load; firing them → **403**                           |
+| `events:subscribe`                                | Core events are **never delivered** to you                                                                      | ⚠️ warns at load; `/__dev/fire/event/<name>` → **403**            |
+| `jobs:run`                                        | **No job is scheduled at all**; `ctx.scheduler.set` is denied, so `scheduled` never fires either                | ⚠️ warns at load; firing a job/scheduled → **403**                |
+| `http:outbound:<host>`                            | The host is **blocked** in the plugin child (fetch/net/dns/dgram wrapped). **No grants ⇒ all outbound blocked** | The **same guard** runs in dev — an undeclared `fetch` is refused |
+
+Note the egress row takes the **permission**, not `egress[]`: TREK builds its runtime
+allowlist from your `http:outbound:<host>` grants (∪ hosts an admin added to an
+`operatorEgress` plugin) and never reads `egress[]` at runtime. See [SKILL.md](../SKILL.md)
+rule 3 — declare both, keep them identical.
+
+### What this looks like
+
+Dev tells you at startup, and again on every hot reload:
+
+```
+  granted: db:read:trips, db:meta, hook:place-detail-provider
+  egress:  (none — all outbound is blocked, as in TREK)
+  ⚠ hooks.warningProvider is implemented but "hook:trip-warning-provider" is NOT granted
+    — TREK will never call this hook
+```
+
+The same list appears on the dashboard at `/`. And firing it is refused outright:
+
+```
+$ curl -i localhost:4317/__dev/fire/hook/warningProvider/getWarnings
+HTTP/1.1 403 Forbidden
+
+PERMISSION_DENIED: hook/warningProvider requires "hook:trip-warning-provider" — add it to
+permissions in trek-plugin.json. TREK would never fire this entry point (it skips ungranted
+plugins silently).
+```
+
+An undeclared host is refused the same way, naming the permission to add:
+
+```
+egress: api.example.com is not in the plugin's declared hosts — add
+"http:outbound:api.example.com" to permissions (and "api.example.com" to egress) in
+trek-plugin.json
+```
+
+Two things worth knowing about the egress guard:
+
+- **Private/loopback targets are blocked by default**, exactly as in production (the SSRF
+  backstop: a declared host that resolves to `127.0.0.1` or `169.254.169.254` is still
+  refused). Developing against a self-hosted sibling service? Set
+  **`TREK_PLUGIN_ALLOW_PRIVATE_EGRESS=on`** — the *same* variable the real host honours.
+- An `operatorEgress` plugin has no hosts in its manifest by definition. Put the admin's
+  hosts in **`operatorEgressHosts`** in `dev-fixtures.json` to widen dev's guard.
+
+### Still not caught anywhere
+
+`validate` and `pack` **cannot** cross-check your hooks: `hooks: {}` lives in
+`server/index.js`, which the manifest validator never loads. Only `dev` (which does load
+your code) and a real TREK see them. **The one exception is the notification channel** —
+it is declared in the *manifest* (`capabilities.notificationChannel`), so `validate` errors
+if `hook:notification-channel` is missing. So: run `dev` at least once before you publish,
+and read the banner.
+
+The mapping from hook key to permission is in
+[manifest.md](manifest.md) and [server-api.md](server-api.md); the *only* place all
+four are actually enforced is a real TREK instance, so `pack` + install into a local
+TREK is the real smoke test for them.
+
 ## Dev kit — screenshots + reproducible builds in one step
 
 The skill ships a small vendorable dev-kit under
@@ -93,16 +193,25 @@ bash <skill>/skills/trek-plugin-dev/assets/setup.sh            # dev-kit only
 bash <skill>/skills/trek-plugin-dev/assets/setup.sh --web-hook # + a Claude Code web SessionStart hook
 ```
 
+> **For a plain store shot you don't need any of this: `trek-plugin shot` is
+> built in** — it boots `dev`, renders your UI in the themed `/preview` frame and
+> writes a 1600×900 `docs/screenshot.png` (`--dark` for dark, `--no-serve` to shoot
+> a dev server you're already running). It needs Playwright (`npm i -D playwright &&
+> npx playwright install chromium`), which is deliberately not an SDK dependency.
+> Reach for the dev-kit below when you want what the SDK has no equivalent for: the
+> **composed** store image (light + dark cards side by side, title, kicker, feature
+> pills, accent background) and both-theme preview shots in one run.
+
 It adds:
 
 - **`scripts/shot.mjs`** (+ `scripts/store-shot.html`) and npm scripts:
-  - `npm run preview-shot` → `docs/preview-light.png` + `docs/preview-dark.png`
-    (the **real** widget via dev's `/preview`) — **show these for UI
-    sign-off**.
-  - `npm run shot` → `docs/screenshot.png` (the composed store image; edit
-    `scripts/store-shot.html`'s CONFIG first). `shot.mjs` starts `dev`, captures
-    at 1600×900, and stops it; it places the harness in `client/` **only** for the
-    shot and deletes it, so it never ships in `plugin.zip`.
+    - `npm run preview-shot` → `docs/preview-light.png` + `docs/preview-dark.png`
+      (the **real** widget via dev's `/preview`) — **show these for UI
+      sign-off**.
+    - `npm run shot` → `docs/screenshot.png` (the composed store image; edit
+      `scripts/store-shot.html`'s CONFIG first). `shot.mjs` starts `dev`, captures
+      at 1600×900, and stops it; it places the harness in `client/` **only** for the
+      shot and deletes it, so it never ships in `plugin.zip`.
 - **`.gitattributes`** (`* text=auto eol=lf`) so line endings don't change your
   file bytes across platforms (the CRLF trap). ⚠️ Even so, the registry
   `sha256`/`size` must always come from the **uploaded release asset**, never a
@@ -224,7 +333,7 @@ frame grab:
   gradient.** (`store-shot.html` builds exactly this from its CONFIG —
   `background: 'glow'|'mesh'`, `accent`/`accent2`, `pattern`, `kicker` — match
   them to what the widget shows, e.g. a Japanese-phrase plugin → warm coral glow
-  + a native-script kicker.)
+    + a native-script kicker.)
 - a centred **title band**: the plugin **name** + a one-line tagline (system
   font, `--text-primary` / `--text-muted`);
 - the widget in **both themes**, two "cards" side by side — here you *may* draw
@@ -282,6 +391,10 @@ export interface MockHostOptions {
   users?: Record<number, unknown>;
   /** Canned db.query results, keyed by the EXACT sql string. */
   queryResults?: Record<string, unknown[]>;
+  /** Hosts an ADMIN supplies at runtime to an `operatorEgress` plugin (which by definition
+   *  cannot name them in its manifest). Only `dev` reads this — it widens the egress guard.
+   *  The mock ctx makes no network calls of its own. */
+  operatorEgressHosts?: string[];
 }
 
 export interface MockHost {
@@ -307,18 +420,42 @@ plugin's **own** entry points against the mock ctx — the "assert what the plug
 DID" half of a unit test:
 
 ```js
-const h = createMockHost({ grants: ['jobs:run', 'db:own'] })
+const h = createMockHost({grants: ['jobs:run', 'db:own']})
 const drv = h.run(def)
-await drv.load(); await drv.unload()
+await drv.load();
+await drv.unload()
 await drv.route(0, req)                 // or route({ method:'GET', path:'/status' }, req)
 await drv.job('refresh')               // runs against userlessCtx
 await drv.scheduled('digest', payload) // userless
 await drv.event('place:created', payload)          // userless
 await drv.pluginEvent('other-plugin', 'rate.updated', payload) // userless
-await drv.deleteUserData(42); await drv.exportUserData(42)     // userless GDPR
+await drv.deleteUserData(42);
+await drv.exportUserData(42)     // userless GDPR
 await drv.hook('placeDetailProvider', 'getDetails', placeId)  // user-bound
 await drv.action('test_connection')          // manifest `actions` button, user-bound
-await drv.channel.send(payload); await drv.channel.test()  // notification channel
+await drv.channel.send(payload);
+await drv.channel.test()  // notification channel
+```
+
+⚠️ **The driver enforces the entry-point grants too** (SDK ≥ 1.5.0), exactly as `dev` and
+the host do — so `grants` must include them or the driver throws `PermissionDenied`:
+
+| Driver call                                    | Needs                           |
+|------------------------------------------------|---------------------------------|
+| `job()` · `scheduled()`                        | `jobs:run`                      |
+| `event()`                                      | `events:subscribe`              |
+| `hook(name, …)` · `channel.send()` / `.test()` | that hook's `hook:*` permission |
+| `deleteUserData()` · `exportUserData()`        | `hook:user-data`                |
+
+This is deliberate: a unit test that fires a hook you never declared would pass while the
+plugin is **dead in production**. Assert the denial too — it is a real behaviour of your
+plugin:
+
+```js
+import { createMockHost, PermissionDenied } from 'trek-plugin-sdk/testing'
+
+const ungranted = createMockHost({ grants: [] }).run(def)
+await expect(ungranted.hook('warningProvider', 'getWarnings', 1)).rejects.toThrow(PermissionDenied)
 ```
 
 **Routes, hooks and `action()` run user-bound; `job`/`scheduled`/`event`/
@@ -349,7 +486,7 @@ Notes:
 
 - The mock db is a **recorder**, not a database: configure `queryResults` for
   canned rows (keyed by the exact SQL string); use an integration test (or the
-  dev server's real SQLite) for real SQL. ** it also enforces the host's
+  dev server's real SQLite) for real SQL. **it also enforces the host's
   statement guards** — `query`/`exec`/`migrate` reject `FORBIDDEN_SQL`
   (`ATTACH`/`DETACH`/`VACUUM`/`PRAGMA`/`RECURSIVE`/`LOAD_EXTENSION`) and > 100k-char
   SQL, and **`db.tx(ops)` is implemented** (≤ 100 ops, each SQL-guarded,
@@ -358,7 +495,7 @@ Notes:
   writes report `{changes:0}`). So tests catch disallowed SQL and exercise
   `db.tx` batches without a real database.
 - `broadcasts` collects `ws.broadcastTo*` calls so you can assert on events
-  without a socket. ** both are target-gated like prod:** `broadcastToTrip`
+  without a socket. **both are target-gated like prod:** `broadcastToTrip`
   refuses without an acting user and membership-checks the trip; `broadcastToUser`
   allows only the acting user themselves. `users.getById` returns **only public
   columns** (`id/username/display_name/avatar`, never email/role) and only for
@@ -367,12 +504,12 @@ Notes:
 - `calls` records the attempt **even when the grant is missing** (the entry is
   pushed before the permission check throws), so a `PERMISSION_DENIED` call still
   appears in `calls`.
-- ** Testing `ctx.costs.*`:** set `actingUserId` (the host-bound user)
+- **Testing `ctx.costs.*`:** set `actingUserId` (the host-bound user)
   and seed `trips[id].costs`. `canEditCosts: false` simulates a missing
   `budget_edit` for `create`; `budgetAddonEnabled: false` simulates the addon
   being off (both → `RESOURCE_FORBIDDEN`). Cover happy-path, missing-grant,
   missing-`budget_edit`, and addon-off cases.
-- ** `userlessCtx`** is the ctx a job / scheduled task / event
+- **`userlessCtx`** is the ctx a job / scheduled task / event
   subscription / GDPR handler receives — bound to **no acting user**. Every
   user-bound read/write on it throws `RESOURCE_FORBIDDEN` ("this call requires an
   authenticated user context"); it shares the same fixtures/grants/recorders.
@@ -380,19 +517,19 @@ Notes:
   `exportUserData` all use it — so test that background handlers **degrade
   gracefully without a user** (fall back to `ctx.config`/`db:own`, not user-bound
   reads).
-- ** `notify.send` is fully modelled:** title/body emoji-stripped (an
+- **`notify.send` is fully modelled:** title/body emoji-stripped (an
   all-emoji title collapses to `''` and is **rejected**), `title` ≤ 200 / `body`
   ≤ 1000 required, `scope` must be `'user'`/`'trip'`, a `'user'` target must
   equal the acting user (else `RESOURCE_FORBIDDEN`), a `'trip'` target is
   membership-checked, `link` must be an in-app `/…` path (not `//…`, ≤ 512).
   Assert on the **`notifications`** array.
-- ** member management + per-trip rights:** `addMember`/`removeMember`
+- **member management + per-trip rights:** `addMember`/`removeMember`
   need `db:write:members` + the fixture's `can.member_manage`, verify the target
   exists, no-op for owner/existing member (`joined:false`), and refuse removing
   the owner. Set `canEditPlaces`/`canEditDays`/`canEditTrip` or a `can` entry
   (`reservation_edit`/`packing_edit`/`collab_edit`/`file_*`) to `false` to test
   the permission-denied write paths.
-- ** addon-off pattern generalises:** each of `budgetAddonEnabled` /
+- **addon-off pattern generalises:** each of `budgetAddonEnabled` /
   `journeyAddonEnabled` / `atlasAddonEnabled` / `vacayAddonEnabled` /
   `collectionsAddonEnabled` / `collabAddonEnabled` (all default true) → set
   `false` to prove your plugin degrades when the addon is disabled
@@ -408,6 +545,11 @@ Notes:
 1. Unit-test route handlers with `createMockHost` — happy path, missing
    grant (`PERMISSION_DENIED`), foreign trip (`RESOURCE_FORBIDDEN`).
 2. Exercise the full loop (routes + UI + fixtures) in `trek-plugin dev`.
-3. Before publishing, run `validate` → `pack` → `preflight` (see
-   [publishing.md](publishing.md)) — preflight replays the registry CI,
-   including the README gate, over the network.
+3. Run **`trek-plugin status`** whenever you're unsure what's left — it grades every
+   registry gate answerable offline and names one next command. `validate` is the
+   same checks with an exit code, for CI.
+4. `trek-plugin publish` then runs those gates itself (step ①) **before** it packs or
+   releases anything, and `preflight` (step ④) replays the gates that need the tag and
+   the release to exist — the artifact's sha256, the manifest and README **at the
+   pinned commit**, owner binding, the signing-downgrade guard. See
+   [publishing.md](publishing.md).

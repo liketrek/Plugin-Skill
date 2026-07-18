@@ -1,0 +1,19 @@
+{
+  "name": "trek-plugin-skill",
+  "interface": {
+    "displayName": "TREK plugin skill"
+  },
+  "plugins": [
+    {
+      "name": "trek-plugin-dev",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

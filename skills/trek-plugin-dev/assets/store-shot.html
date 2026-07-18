@@ -30,174 +30,307 @@
 -->
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Store shot</title>
-<style>
-  :root {
-    --accent: #6366f1;          /* plugin brand — MATCH what the widget shows */
-    --accent-2: #22d3ee;        /* second hue (only used by the 'mesh' background) */
-    --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    --fg: #f4f4f5; --fg-muted: #a1a1aa;   /* text; overridden by the light 'mesh' bg */
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; }
-  body {
-    width: 1600px; height: 900px; overflow: hidden; position: relative;
-    font-family: var(--font);
-    display: flex; align-items: center; justify-content: center;
-  }
+    <meta charset="utf-8"/>
+    <title>Store shot</title>
+    <style>
+        :root {
+            --accent: #6366f1; /* plugin brand — MATCH what the widget shows */
+            --accent-2: #22d3ee; /* second hue (only used by the 'mesh' background) */
+            --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            --fg: #f4f4f5;
+            --fg-muted: #a1a1aa; /* text; overridden by the light 'mesh' bg */
+        }
 
-  /* ── Backgrounds ── */
-  body.bg-glow {                /* dark, atmospheric — accent glow behind the hero */
-    background-color: #0a0a0d;
-    background-image:
-      radial-gradient(1000px 560px at 50% 30%,  color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
-      radial-gradient(1400px 900px at 50% 128%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%);
-  }
-  body.bg-mesh {                /* light, colourful corner mesh */
-    --fg: #111827; --fg-muted: #6b7280;
-    background-color: #eef1f8;
-    background-image:
-      radial-gradient(760px 520px at 6% -14%,  color-mix(in srgb, var(--accent) 60%, transparent), transparent 60%),
-      radial-gradient(720px 560px at 100% 2%,  color-mix(in srgb, var(--accent-2) 55%, transparent), transparent 62%),
-      radial-gradient(900px 760px at 64% 122%, color-mix(in srgb, var(--accent) 32%, transparent), transparent 60%),
-      linear-gradient(150deg, #f5f7fd, #e8ecf7);
-  }
+        * {
+            box-sizing: border-box;
+        }
 
-  /* ── Patterns (a .pat layer above the bg, below the content) ── */
-  .pat { position: fixed; inset: 0; pointer-events: none; z-index: 0; }
-  .pat.waves {                  /* topographic arcs rising from below centre */
-    background-image: repeating-radial-gradient(circle at 50% 150%,
-      transparent 0 46px, color-mix(in srgb, var(--fg) 7%, transparent) 46px 48px);
-    -webkit-mask-image: linear-gradient(transparent 45%, #000);
+        html, body {
+            margin: 0;
+        }
+
+        body {
+            width: 1600px;
+            height: 900px;
+            overflow: hidden;
+            position: relative;
+            font-family: var(--font);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* ── Backgrounds ── */
+        body.bg-glow { /* dark, atmospheric — accent glow behind the hero */
+            background-color: #0a0a0d;
+            background-image: radial-gradient(1000px 560px at 50% 30%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 62%),
+            radial-gradient(1400px 900px at 50% 128%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%);
+        }
+
+        body.bg-mesh { /* light, colourful corner mesh */
+            --fg: #111827;
+            --fg-muted: #6b7280;
+            background-color: #eef1f8;
+            background-image: radial-gradient(760px 520px at 6% -14%, color-mix(in srgb, var(--accent) 60%, transparent), transparent 60%),
+            radial-gradient(720px 560px at 100% 2%, color-mix(in srgb, var(--accent-2) 55%, transparent), transparent 62%),
+            radial-gradient(900px 760px at 64% 122%, color-mix(in srgb, var(--accent) 32%, transparent), transparent 60%),
+            linear-gradient(150deg, #f5f7fd, #e8ecf7);
+        }
+
+        /* ── Patterns (a .pat layer above the bg, below the content) ── */
+        .pat {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .pat.waves { /* topographic arcs rising from below centre */
+            background-image: repeating-radial-gradient(circle at 50% 150%,
+            transparent 0 46px, color-mix(in srgb, var(--fg) 7%, transparent) 46px 48px);
+            -webkit-mask-image: linear-gradient(transparent 45%, #000);
             mask-image: linear-gradient(transparent 45%, #000);
-  }
-  .pat.dots {
-    background-image: radial-gradient(color-mix(in srgb, var(--fg) 22%, transparent) 1.3px, transparent 1.4px);
-    background-size: 24px 24px;
-    -webkit-mask-image: radial-gradient(1200px 820px at 50% 42%, transparent 28%, #000);
+        }
+
+        .pat.dots {
+            background-image: radial-gradient(color-mix(in srgb, var(--fg) 22%, transparent) 1.3px, transparent 1.4px);
+            background-size: 24px 24px;
+            -webkit-mask-image: radial-gradient(1200px 820px at 50% 42%, transparent 28%, #000);
             mask-image: radial-gradient(1200px 820px at 50% 42%, transparent 28%, #000);
-  }
-  .pat.grid {
-    background-image:
-      linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px);
-    background-size: 46px 46px; opacity: .5;
-    -webkit-mask-image: radial-gradient(1200px 760px at 50% 42%, #000, transparent 78%);
+        }
+
+        .pat.grid {
+            background-image: linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px),
+            linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent) 1px, transparent 1px);
+            background-size: 46px 46px;
+            opacity: .5;
+            -webkit-mask-image: radial-gradient(1200px 760px at 50% 42%, #000, transparent 78%);
             mask-image: radial-gradient(1200px 760px at 50% 42%, #000, transparent 78%);
-  }
+        }
 
-  /* ── Content ── */
-  .safe { position: relative; z-index: 1; width: 1040px; text-align: center; }
-  .kicker { font-size: 20px; font-weight: 600; letter-spacing: .04em; color: var(--accent); margin-bottom: 4px; }
-  .title { font-size: 52px; font-weight: 800; color: var(--fg); letter-spacing: -0.02em; line-height: 1.06; }
-  .tagline { margin-top: 12px; font-size: 18px; font-weight: 500; color: var(--fg-muted); }
-  .cards { margin-top: 40px; display: flex; gap: 28px; justify-content: center; }
-  .col { display: flex; flex-direction: column; }
+        /* ── Content ── */
+        .safe {
+            position: relative;
+            z-index: 1;
+            width: 1040px;
+            text-align: center;
+        }
 
-  /* Glassy tool card — mirrors the ≥3.2.1 PluginWidgets.tsx look. */
-  .card { width: 440px; border-radius: 20px; overflow: hidden; border: 1px solid;
-          backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
-  .card .head { padding: 16px 20px 8px; font-size: 12px; font-weight: 600; text-align: left;
-                text-transform: uppercase; letter-spacing: 0.14em; }
-  .card iframe { display: block; width: 100%; height: 200px; border: 0; background: transparent; }
-  .badge { padding: 8px 0 0; font-size: 11px; font-weight: 600; letter-spacing: .06em;
-           text-transform: uppercase; color: var(--fg-muted); text-align: center; }
-  .card.light { background: rgba(255,255,255,.75); border-color: rgba(255,255,255,.6);
-                box-shadow: 0 12px 40px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.6); }
-  .card.light .head { color: #6b7280; }
-  .card.dark { background: rgba(20,20,23,.62); border-color: rgba(255,255,255,.09);
-               box-shadow: 0 18px 50px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.06); }
-  .card.dark .head { color: #a1a1aa; }
+        .kicker {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: .04em;
+            color: var(--accent);
+            margin-bottom: 4px;
+        }
 
-  .pills { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .pill { padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
-          color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent);
-          border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
-</style>
+        .title {
+            font-size: 52px;
+            font-weight: 800;
+            color: var(--fg);
+            letter-spacing: -0.02em;
+            line-height: 1.06;
+        }
+
+        .tagline {
+            margin-top: 12px;
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--fg-muted);
+        }
+
+        .cards {
+            margin-top: 40px;
+            display: flex;
+            gap: 28px;
+            justify-content: center;
+        }
+
+        .col {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Glassy tool card — mirrors the PluginWidgets.tsx look. */
+        .card {
+            width: 440px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid;
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+
+        .card .head {
+            padding: 16px 20px 8px;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: left;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+        }
+
+        .card iframe {
+            display: block;
+            width: 100%;
+            height: 200px;
+            border: 0;
+            background: transparent;
+        }
+
+        .badge {
+            padding: 8px 0 0;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--fg-muted);
+            text-align: center;
+        }
+
+        .card.light {
+            background: rgba(255, 255, 255, .75);
+            border-color: rgba(255, 255, 255, .6);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .14), inset 0 1px 0 rgba(255, 255, 255, .6);
+        }
+
+        .card.light .head {
+            color: #6b7280;
+        }
+
+        .card.dark {
+            background: rgba(20, 20, 23, .62);
+            border-color: rgba(255, 255, 255, .09);
+            box-shadow: 0 18px 50px rgba(0, 0, 0, .5), inset 0 1px 0 rgba(255, 255, 255, .06);
+        }
+
+        .card.dark .head {
+            color: #a1a1aa;
+        }
+
+        .pills {
+            margin-top: 30px;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--fg);
+            background: color-mix(in srgb, var(--fg) 8%, transparent);
+            border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+        }
+    </style>
 </head>
 <body>
-  <div class="safe">
+<div class="safe">
     <div class="kicker" id="kicker"></div>
     <div class="title" id="title"></div>
     <div class="tagline" id="tagline"></div>
     <div class="cards" id="cards"></div>
     <div class="pills" id="pills"></div>
-  </div>
+</div>
 
 <script>
-  // ─────────────────────────────────────────────────────────────────────────
-  // CONFIG — edit this. `state` is what your route(s) return via trek:invoke.
-  // ─────────────────────────────────────────────────────────────────────────
-  const CONFIG = {
-    uiUrl: '/ui',                   // the widget's own client bundle
-    background: 'glow',             // 'glow' (dark, atmospheric) | 'mesh' (light, colourful)
-    accent:  '#6366f1',             // plugin brand — MATCH the widget (e.g. warm coral for a JP plugin)
-    accent2: '#22d3ee',             // second mesh hue (only used by 'mesh')
-    pattern: 'waves',               // 'waves' | 'dots' | 'grid' | 'none'
-    kicker:  '',                    // optional line above the title (e.g. a native-script name), in accent
-    name: 'Your Plugin',
-    tagline: 'One line on what it does and why it belongs on the dashboard.',
-    pills: ['Membership-checked', 'Light & dark', 'No network', 'Zero setup'],
-    frameHeight: 200,               // sidebar ~180–200; raise for taller widgets
-    locale: 'en',
-    // TWO frames = light + dark side by side (shows theme support) — the default.
-    // Drop to ONE for a single hero card. Give each frame a different `state` to
-    // show the widget doing something (e.g. healthy vs. alert).
-    frames: [
-      { theme: 'light', tripId: 1, state: { /* your GET /… payload */ } },
-      { theme: 'dark',  tripId: 1, state: { /* a different state */ } },
-    ],
-  }
-  // ─────────────────────────────────────────────────────────────────────────
-
-  const root = document.documentElement, bodyEl = document.body
-  root.style.setProperty('--accent', CONFIG.accent)
-  root.style.setProperty('--accent-2', CONFIG.accent2)
-  bodyEl.classList.add(CONFIG.background === 'mesh' ? 'bg-mesh' : 'bg-glow')
-  if (CONFIG.pattern && CONFIG.pattern !== 'none') {
-    const pat = document.createElement('div'); pat.className = 'pat ' + CONFIG.pattern; bodyEl.prepend(pat)
-  }
-  const set = (id, v) => { const el = document.getElementById(id); if (v) el.textContent = v; else el.style.display = 'none' }
-  set('kicker', CONFIG.kicker); set('title', CONFIG.name); set('tagline', CONFIG.tagline)
-  document.getElementById('pills').innerHTML = (CONFIG.pills || []).map(() => '<span class="pill"></span>').join('')
-  document.querySelectorAll('.pill').forEach((el, i) => { el.textContent = CONFIG.pills[i] })
-
-  // Build one column (card + optional theme label) per configured frame.
-  const frames = []
-  const cards = document.getElementById('cards')
-  const showLabels = CONFIG.frames.length > 1
-  for (const cfg of CONFIG.frames) {
-    const col = document.createElement('div'); col.className = 'col'
-    const card = document.createElement('div'); card.className = 'card ' + (cfg.theme === 'light' ? 'light' : 'dark')
-    const head = document.createElement('div'); head.className = 'head'; head.textContent = CONFIG.name
-    const iframe = document.createElement('iframe'); iframe.src = CONFIG.uiUrl
-    iframe.style.height = CONFIG.frameHeight + 'px'
-    card.appendChild(head); card.appendChild(iframe); col.appendChild(card)
-    if (showLabels) { const b = document.createElement('div'); b.className = 'badge'; b.textContent = cfg.theme; col.appendChild(b) }
-    cards.appendChild(col)
-    frames.push({ iframe, cfg })
-  }
-
-  // Per-frame host bridge, keyed by e.source (each iframe's contentWindow).
-  addEventListener('message', (e) => {
-    const f = frames.find(fr => fr.iframe.contentWindow === e.source)
-    if (!f) return
-    const m = e.data; if (!m || typeof m !== 'object') return
-    if (m.type === 'trek:ready' || m.type === 'trek:context:request') {
-      e.source.postMessage({
-        type: 'trek:context', tripId: f.cfg.tripId ?? null, userId: '1',
-        theme: f.cfg.theme, locale: CONFIG.locale, hostOrigin: '*',
-        // ≥3.2.1 fields the design kit reads. Add `tokens: {…}` for an exact accent.
-        appearance: { scheme: 'default', density: 'comfortable', reducedMotion: false, noTransparency: false },
-      }, '*')
-    } else if (m.type === 'trek:invoke') {
-      e.source.postMessage({ type: 'trek:response', requestId: m.requestId, data: f.cfg.state }, '*')
-    } else if (m.type === 'trek:resize') {
-      const h = Math.max(120, Math.min(Number(m.height) || CONFIG.frameHeight, 560))
-      f.iframe.style.height = h + 'px'
+    // ─────────────────────────────────────────────────────────────────────────
+    // CONFIG — edit this. `state` is what your route(s) return via trek:invoke.
+    // ─────────────────────────────────────────────────────────────────────────
+    const CONFIG = {
+        uiUrl: '/ui',                   // the widget's own client bundle
+        background: 'glow',             // 'glow' (dark, atmospheric) | 'mesh' (light, colourful)
+        accent: '#6366f1',             // plugin brand — MATCH the widget (e.g. warm coral for a JP plugin)
+        accent2: '#22d3ee',             // second mesh hue (only used by 'mesh')
+        pattern: 'waves',               // 'waves' | 'dots' | 'grid' | 'none'
+        kicker: '',                    // optional line above the title (e.g. a native-script name), in accent
+        name: 'Your Plugin',
+        tagline: 'One line on what it does and why it belongs on the dashboard.',
+        pills: ['Membership-checked', 'Light & dark', 'No network', 'Zero setup'],
+        frameHeight: 200,               // sidebar ~180–200; raise for taller widgets
+        locale: 'en',
+        // TWO frames = light + dark side by side (shows theme support) — the default.
+        // Drop to ONE for a single hero card. Give each frame a different `state` to
+        // show the widget doing something (e.g. healthy vs. alert).
+        frames: [
+            {theme: 'light', tripId: 1, state: { /* your GET /… payload */}},
+            {theme: 'dark', tripId: 1, state: { /* a different state */}},
+        ],
     }
-  })
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const root = document.documentElement, bodyEl = document.body
+    root.style.setProperty('--accent', CONFIG.accent)
+    root.style.setProperty('--accent-2', CONFIG.accent2)
+    bodyEl.classList.add(CONFIG.background === 'mesh' ? 'bg-mesh' : 'bg-glow')
+    if (CONFIG.pattern && CONFIG.pattern !== 'none') {
+        const pat = document.createElement('div');
+        pat.className = 'pat ' + CONFIG.pattern;
+        bodyEl.prepend(pat)
+    }
+    const set = (id, v) => {
+        const el = document.getElementById(id);
+        if (v) el.textContent = v; else el.style.display = 'none'
+    }
+    set('kicker', CONFIG.kicker);
+    set('title', CONFIG.name);
+    set('tagline', CONFIG.tagline)
+    document.getElementById('pills').innerHTML = (CONFIG.pills || []).map(() => '<span class="pill"></span>').join('')
+    document.querySelectorAll('.pill').forEach((el, i) => {
+        el.textContent = CONFIG.pills[i]
+    })
+
+    // Build one column (card + optional theme label) per configured frame.
+    const frames = []
+    const cards = document.getElementById('cards')
+    const showLabels = CONFIG.frames.length > 1
+    for (const cfg of CONFIG.frames) {
+        const col = document.createElement('div');
+        col.className = 'col'
+        const card = document.createElement('div');
+        card.className = 'card ' + (cfg.theme === 'light' ? 'light' : 'dark')
+        const head = document.createElement('div');
+        head.className = 'head';
+        head.textContent = CONFIG.name
+        const iframe = document.createElement('iframe');
+        iframe.src = CONFIG.uiUrl
+        iframe.style.height = CONFIG.frameHeight + 'px'
+        card.appendChild(head);
+        card.appendChild(iframe);
+        col.appendChild(card)
+        if (showLabels) {
+            const b = document.createElement('div');
+            b.className = 'badge';
+            b.textContent = cfg.theme;
+            col.appendChild(b)
+        }
+        cards.appendChild(col)
+        frames.push({iframe, cfg})
+    }
+
+    // Per-frame host bridge, keyed by e.source (each iframe's contentWindow).
+    addEventListener('message', (e) => {
+        const f = frames.find(fr => fr.iframe.contentWindow === e.source)
+        if (!f) return
+        const m = e.data;
+        if (!m || typeof m !== 'object') return
+        if (m.type === 'trek:ready' || m.type === 'trek:context:request') {
+            e.source.postMessage({
+                type: 'trek:context', tripId: f.cfg.tripId ?? null, userId: '1',
+                theme: f.cfg.theme, locale: CONFIG.locale, hostOrigin: '*',
+                // Fields the design kit reads. Add `tokens: {…}` for an exact accent.
+                appearance: {scheme: 'default', density: 'comfortable', reducedMotion: false, noTransparency: false},
+            }, '*')
+        } else if (m.type === 'trek:invoke') {
+            e.source.postMessage({type: 'trek:response', requestId: m.requestId, data: f.cfg.state}, '*')
+        } else if (m.type === 'trek:resize') {
+            const h = Math.max(120, Math.min(Number(m.height) || CONFIG.frameHeight, 560))
+            f.iframe.style.height = h + 'px'
+        }
+    })
 </script>
 </body>
 </html>

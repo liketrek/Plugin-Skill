@@ -8,7 +8,7 @@ and its community registry
 
 ## What the agent learns
 
-- The plugin model: `integration` / `page` / `widget`, the isolated
+- The plugin model: `integration` / `page` / `widget` / `trip-page`, the isolated
   child-process runtime, and the sandboxed iframe UI.
 - `trek-plugin.json`: every manifest field, the full permission catalog, and
   the `http:outbound:<host>` vs `egress[]` trap.
@@ -21,12 +21,20 @@ and its community registry
 - The whole `trek-plugin` CLI (`create`, `dev`, `validate`, `pack`, `entry`,
   `release`, `preflight`, `submit`, `publish`, `keygen`/`sign`).
 - Publishing: GitHub releases, the registry entry schema, **every CI gate**
-  of the TREK-Plugins repo (entry + README quality gates), signing (TOFU),
-  and the update flow.
+  of the TREK-Plugins repo (entry + README quality gates, **author-signature
+  verification** and the signing-downgrade guard), the maintainer-override
+  labels, and the update flow.
+- **Signing (and why to do it):** the skill steers authors to say yes when `publish`
+  offers to sign (and to pass `--sign` in CI, which is never prompted) — the sha256 pin
+  only proves the *registry* served those bytes; the signature proves *the author built
+  them*. It also spells out the commitment: a one-way door you may enter **late**
+  (unsigned → signed breaks nobody) but can never back out of, TOFU-pinned — and how to
+  look after the key.
 
 ## Layout
 
 ```
+.agents/skills/trek-plugin-dev  → symlink to skills/trek-plugin-dev (Codex discovery)
 skills/trek-plugin-dev/
 ├── SKILL.md                    # entry point: workflow, rules, decision tables
 ├── references/
@@ -111,9 +119,54 @@ config (resuming reuses cached config). Docs:
 [Claude Code on the web](https://code.claude.com/docs/en/claude-code-on-the-web) ·
 [Discover plugins](https://code.claude.com/docs/en/discover-plugins).
 
+### OpenAI Codex
+
+The same `SKILL.md` works in Codex unchanged — its frontmatter is deliberately
+limited to `name` and `description`, the two fields Codex requires. Only the
+*discovery path* differs: Codex does not read `.claude/skills` or a top-level
+`skills/`. It scans **`.agents/skills`** in every directory from the working
+directory up to the repository root, plus `$HOME/.agents/skills` and
+`/etc/codex/skills`
+([docs](https://learn.chatgpt.com/docs/build-skills)).
+
+This repo ships that path already — `.agents/skills/trek-plugin-dev` is a
+symlink to `skills/trek-plugin-dev`, so a plain clone works in Codex with no
+setup.
+
+**In your own plugin repo**, do the same:
+
+```bash
+mkdir -p .agents/skills
+git clone --depth 1 https://github.com/liketrek/Plugin-Skill /tmp/tps
+cp -r /tmp/tps/skills/trek-plugin-dev .agents/skills/
+```
+
+Or user-scoped, for every repo you touch:
+
+```bash
+cp -r skills/trek-plugin-dev ~/.agents/skills/
+```
+
+Symlink the **directory**, never `SKILL.md` itself. On Windows, committed
+symlinks need `git config core.symlinks true` — otherwise git checks them out
+as plain text files and Codex silently finds no skill; copy the directory
+instead if that's a concern.
+
+**As an installable Codex plugin.** The repo also ships `.codex-plugin/plugin.json`
+and `.agents/plugins/marketplace.json`, mirroring the layout OpenAI uses in
+[openai/plugins](https://github.com/openai/plugins). That lets you add this repo
+as a plugin marketplace instead of copying files:
+
+```
+codex plugin marketplace add liketrek/Plugin-Skill
+```
+
+Unlike the Claude manifest, the Codex one carries an explicit `version` — Codex
+caches installs per version (see [Updating](#updating)).
+
 However you install it, the skill triggers automatically when a task involves
 TREK plugins, `trek-plugin-sdk`, `trek-plugin.json`, or the TREK-Plugins
-registry — or invoke it explicitly with `/trek-plugin-dev`.
+registry — or invoke it explicitly with `/trek-plugin-dev` (Claude Code).
 
 ## Updating
 

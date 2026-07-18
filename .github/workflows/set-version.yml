@@ -1,0 +1,60 @@
+name: set version
+
+# Bumps the version in .codex-plugin/plugin.json, validates, commits, and
+# optionally tags. .claude-plugin/plugin.json stays unversioned on purpose —
+# see README "Updating".
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'New version, semver (e.g. 3.4.1)'
+        required: true
+        type: string
+      tag:
+        description: 'Also create and push a v<version> tag'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set version
+        run: node .github/scripts/set-version.mjs "${{ inputs.version }}"
+
+      - name: Validate
+        run: node .github/scripts/validate-skill.mjs
+
+      - name: Commit
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No change — version was already ${{ inputs.version }}."
+            exit 0
+          fi
+          # Attribute the commit to whoever dispatched the run, not to a bot.
+          git config user.name  "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git commit -am "chore: set plugin version to ${{ inputs.version }}"
+          git push
+
+      - name: Tag
+        if: inputs.tag
+        run: |
+          set -euo pipefail
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ inputs.version }} already exists — skipping."
+            exit 0
+          fi
+          git tag "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"

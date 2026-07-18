@@ -57,6 +57,6 @@ grep -q "^client/harness.html" .gitignore 2>/dev/null || echo "client/harness.ht
 
 echo
 echo "done. Next:"
-echo "  npm run dev           # dev server at http://localhost:4317 (/preview on SDK >= 1.3.0)"
+echo "  npm run dev           # dev server at http://localhost:4317"
 echo "  npm run preview-shot  # docs/preview-{light,dark}.png  — show these for UI sign-off"
 echo "  npm run shot          # docs/screenshot.png            — the store image (edit scripts/store-shot.html CONFIG first)"

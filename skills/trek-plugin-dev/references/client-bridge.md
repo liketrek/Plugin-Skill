@@ -16,10 +16,13 @@ step at install time.
   `style-src 'self' 'unsafe-inline'` · `img-src 'self' data: blob:` ·
   `font-src 'self' data:` · `connect-src 'self' https://<each granted host>` ·
   `frame-ancestors 'self'` · `base-uri 'none'` · `form-action 'self'` ·
-  `sandbox allow-scripts allow-forms`. `connect-src` hosts come from the granted
-  `http:outbound:<host>` permissions (see the egress trap in
-  [manifest.md](manifest.md)), plus the plugin's **own asset path** — see
-  [What the CSP allows](#what-the-csp-allows--images-fonts-bundled-assets).
+  `sandbox allow-scripts allow-forms`. `connect-src` hosts are the **union of** the
+  granted `http:outbound:<host>` permissions (see the egress trap in
+  [manifest.md](manifest.md)) **and any hosts an admin added post-install** for an
+  `operatorEgress` plugin — i.e. **exactly what the server side of your plugin may
+  reach**, so a self-hosted target (a Gotify, an ntfy) that the admin configured works
+  from the iframe too, not just from your routes. Plus the plugin's **own asset path** —
+  see [What the CSP allows](#what-the-csp-allows--images-fonts-bundled-assets).
 - Height: sidebar and scoped-detail widgets request size via `trek:resize`
   (capped at 2000 px); `page`/`trip-page` frames are **fill-mode** — see §5.
 
@@ -50,26 +53,26 @@ window.parent.postMessage(
 
 ### Messages you send to TREK (inbound bridge)
 
-| Message | Payload | Effect |
-|---|---|---|
-| `trek:ready` | — | TREK replies with `trek:context` |
-| `trek:context:request` | — | Re-request the context |
-| `trek:navigate` | `{ to }` | In-app navigation to an **app-absolute path**: must start with `/` and match `^\/[a-zA-Z0-9/_?=&%.-]*$` — query string allowed, but `#` fragments or any character outside that set **silently reject** the navigation; protocol-relative `//…` is rejected |
-| `trek:notify` | `{ level, message, duration? }` (`duration` in ms, host-clamped to ~1500–15000) | Toast; `level` = `info` \| `success` \| `warning` \| `error` (unknown level falls back to `info`). `message` is truncated to **200 chars**; an empty message is dropped silently |
-| `trek:resize` | `{ height }` | Set iframe height (capped at 2000 px) |
-| `trek:invoke` | `{ requestId, sub, method, body }` | Call your own route (`sub` is the path below `/api/plugins/<id>`, query string allowed); resolves as `trek:response` or `trek:error` |
-| `trek:openExternal` | `{ url }` | Ask the host to open an `http`/`https` URL in a new browser tab — the **only** way to open a link: the sandbox has no `allow-popups`, so `window.open()`/`target="_blank"` are blocked (see [Opening external links](#opening-external-links-trekopenexternal)) |
-| `trek:confirm` | `{ requestId, title?, message, confirmLabel?, cancelLabel?, danger? }` (host-truncated: title ≤120, message ≤500, labels ≤40) | Ask the host to render a **native** confirm dialog (one at a time). The shown title is always `"<pluginName> — <title>"` (just the plugin name if no title), so a plugin can't spoof a TREK system dialog. ⚠️ **`danger` defaults to TRUE** (`danger: msg.danger !== false`) — an unspecified confirm renders **destructive/red**; pass `danger:false` for a neutral one. Host answers with `trek:confirm:result` (correlate by `requestId`). ⚠️ A **second confirm while one is open is auto-answered `{confirmed:false}`** without the user seeing anything — don't fire confirms concurrently |
+| Message                | Payload                                                                                                                       | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|------------------------|-------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `trek:ready`           | —                                                                                                                             | TREK replies with `trek:context`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `trek:context:request` | —                                                                                                                             | Re-request the context                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `trek:navigate`        | `{ to }`                                                                                                                      | In-app navigation to an **app-absolute path**: must start with `/` and match `^\/[a-zA-Z0-9/_?=&%.-]*$` — query string allowed, but `#` fragments or any character outside that set **silently reject** the navigation; protocol-relative `//…` is rejected                                                                                                                                                                                                                                                                                                                                      |
+| `trek:notify`          | `{ level, message, duration? }` (`duration` in ms, host-clamped to ~1500–15000)                                               | Toast; `level` = `info` \| `success` \| `warning` \| `error` (unknown level falls back to `info`). `message` is truncated to **200 chars**; an empty message is dropped silently                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `trek:resize`          | `{ height }`                                                                                                                  | Set iframe height (capped at 2000 px)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `trek:invoke`          | `{ requestId, sub, method, body }`                                                                                            | Call your own route (`sub` is the path below `/api/plugins/<id>`, query string allowed); resolves as `trek:response` or `trek:error`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `trek:openExternal`    | `{ url }`                                                                                                                     | Ask the host to open an `http`/`https` URL in a new browser tab — the **only** way to open a link: the sandbox has no `allow-popups`, so `window.open()`/`target="_blank"` are blocked (see [Opening external links](#opening-external-links-trekopenexternal))                                                                                                                                                                                                                                                                                                                                  |
+| `trek:confirm`         | `{ requestId, title?, message, confirmLabel?, cancelLabel?, danger? }` (host-truncated: title ≤120, message ≤500, labels ≤40) | Ask the host to render a **native** confirm dialog (one at a time). The shown title is always `"<pluginName> — <title>"` (just the plugin name if no title), so a plugin can't spoof a TREK system dialog. ⚠️ **`danger` defaults to TRUE** (`danger: msg.danger !== false`) — an unspecified confirm renders **destructive/red**; pass `danger:false` for a neutral one. Host answers with `trek:confirm:result` (correlate by `requestId`). ⚠️ A **second confirm while one is open is auto-answered `{confirmed:false}`** without the user seeing anything — don't fire confirms concurrently |
 
 ### Messages TREK sends you (host bridge)
 
-| Message | Payload |
-|---|---|
-| `trek:context` | `{ tripId, userId, theme, locale, dir, hostOrigin, user, formats, tokens, appearance, placeId, dayId, reservationId }`. `tripId` is **`string \| null`** — `null` for a `page` plugin and a widget with no spotlighted trip, **set for a `trip-page` tab and scoped detail widgets**. `placeId` / `dayId` / `reservationId` (`string \| null`) — each set only for its own scoped slot (`place-detail` → `placeId`, `day-detail` → `dayId`, `reservation-detail` → `reservationId`), else `null`. `userId` is a string or `null`; `user` is `{name, avatar, isAdmin}` or `null` — **never email**. `theme` is `'light'`/`'dark'`; `dir` is `'ltr'`/`'rtl'` (the kit sets `lang` + `dir` on `<html>` from it — hand-rolled UIs should mirror it). `formats` = `{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`; `tokens` = the global palette for the current theme (see §1); `appearance` = `{scheme, density, reducedMotion, noTransparency}`. The host also pushes context **proactively on iframe load** (so `trek:ready` is belt-and-braces) and **re-sends it live** on any theme/appearance change (accent/density/high-contrast/reduced-motion) **and on locale/format-settings/trip-or-entity-id changes** — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
-| `trek:response` | `{ requestId, data }` — successful `trek:invoke` |
-| `trek:error` | `{ requestId, code, message }` — failed `trek:invoke`; `code` is the HTTP status or `"error"` |
-| `trek:confirm:result` | `{ requestId, confirmed }` — reply to your `trek:confirm` |
-| `trek:event` | `{ event, tripId }` — live push of a trip event into the frame for the trip in view: **core events** (`place:created`, `day:updated`, …) **and your own `plugin:<id>:*` broadcasts**. Carries **only** the event name + `tripId`, never the payload — fetch details via `trek:invoke`. This is the **client-side counterpart of the server `events` surface**, and the path that lets your own `ctx.ws.broadcast*` reach your iframe (see [server-api.md](server-api.md)). Treat it as an accelerator on top of an initial fetch, not a replacement — it is **only forwarded to frames mounted with a `tripId`** and only while a planner has the trip joined, so **dashboard `sidebar`/`hero` widgets should still poll** |
+| Message               | Payload                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+|-----------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `trek:context`        | `{ tripId, userId, theme, locale, dir, hostOrigin, user, formats, tokens, appearance, placeId, dayId, reservationId }`. `tripId` is **`string \| null`** — `null` for a `page` plugin and a widget with no spotlighted trip, **set for a `trip-page` tab and scoped detail widgets**. `placeId` / `dayId` / `reservationId` (`string \| null`) — each set only for its own scoped slot (`place-detail` → `placeId`, `day-detail` → `dayId`, `reservation-detail` → `reservationId`), else `null`. `userId` is a string or `null`; `user` is `{name, avatar, isAdmin}` or `null` — **never email**. `theme` is `'light'`/`'dark'`; `dir` is `'ltr'`/`'rtl'` (the kit sets `lang` + `dir` on `<html>` from it — hand-rolled UIs should mirror it). `formats` = `{locale, currency, timeFormat, distanceUnit, temperatureUnit, timezone}`; `tokens` = the global palette for the current theme (see §1); `appearance` = `{scheme, density, reducedMotion, noTransparency}`. The host also pushes context **proactively on iframe load** (so `trek:ready` is belt-and-braces) and **re-sends it live** on any theme/appearance change (accent/density/high-contrast/reduced-motion) **and on locale/format-settings/trip-or-entity-id changes** — handle **repeated** `trek:context`, not just the first. See [Making the UI feel native](#making-the-ui-feel-native). |
+| `trek:response`       | `{ requestId, data }` — successful `trek:invoke`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `trek:error`          | `{ requestId, code, message }` — failed `trek:invoke`; `code` is the HTTP status or `"error"`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `trek:confirm:result` | `{ requestId, confirmed }` — reply to your `trek:confirm`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `trek:event`          | `{ event, tripId }` — live push of a trip event into the frame for the trip in view: **core events** (`place:created`, `day:updated`, …) **and your own `plugin:<id>:*` broadcasts**. Carries **only** the event name + `tripId`, never the payload — fetch details via `trek:invoke`. This is the **client-side counterpart of the server `events` surface**, and the path that lets your own `ctx.ws.broadcast*` reach your iframe (see [server-api.md](server-api.md)). Treat it as an accelerator on top of an initial fetch, not a replacement — it is **only forwarded to frames mounted with a `tripId`** and only while a planner has the trip joined, so **dashboard `sidebar`/`hero` widgets should still poll**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 > The wire protocol above is the real contract — you can send/handle every
 > message with hand-rolled `postMessage` (many plugins roll the bridge
@@ -133,18 +136,18 @@ explicit **own-path host-source**: the per-plugin CSP appends
 **and** `connect-src` — so your **own `client/` files load by relative path**,
 but **no external host is ever reachable**:
 
-| You write | Renders? | Why |
-|---|---|---|
-| Inline `<script>` / inline `<style>` | ✅ | `'unsafe-inline'` is granted |
-| Inline SVG (`<svg><path>…`) | ✅ | Markup, not an `img-src` fetch |
-| `<img src="data:image/png;base64,…">` | ✅ | `img-src` includes `data:` |
-| `<img>` / canvas from a `blob:` URL | ✅ | `img-src` includes `blob:` |
-| `<img src="./logo.png">` (a file in your `client/` bundle) | ✅ | Own-path host-source (`<host>/plugin-frame/<id>/`) |
-| CSS `background-image: url(./x.png)` / `<image href="./x.png">` in SVG | ✅ | Same own-path source |
-| `@font-face` from a bundled `.woff2` | ✅ | Own path is in `font-src` |
-| A multi-file Vite/React build (`./assets/*.js`, `*.css`) | ✅ | Own path is in `script-src`/`style-src` — no inlining needed |
-| `<img src="https://cdn…/x.png">` | ❌ | No external host in `img-src` |
-| Google Fonts / any external stylesheet, script, or font | ❌ | External hosts are never allow-listed (only granted `http:outbound:<host>` hosts, and those only in `connect-src`) |
+| You write                                                              | Renders? | Why                                                                                                                                                                                                                              |
+|------------------------------------------------------------------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Inline `<script>` / inline `<style>`                                   | ✅        | `'unsafe-inline'` is granted                                                                                                                                                                                                     |
+| Inline SVG (`<svg><path>…`)                                            | ✅        | Markup, not an `img-src` fetch                                                                                                                                                                                                   |
+| `<img src="data:image/png;base64,…">`                                  | ✅        | `img-src` includes `data:`                                                                                                                                                                                                       |
+| `<img>` / canvas from a `blob:` URL                                    | ✅        | `img-src` includes `blob:`                                                                                                                                                                                                       |
+| `<img src="./logo.png">` (a file in your `client/` bundle)             | ✅        | Own-path host-source (`<host>/plugin-frame/<id>/`)                                                                                                                                                                               |
+| CSS `background-image: url(./x.png)` / `<image href="./x.png">` in SVG | ✅        | Same own-path source                                                                                                                                                                                                             |
+| `@font-face` from a bundled `.woff2`                                   | ✅        | Own path is in `font-src`                                                                                                                                                                                                        |
+| A multi-file Vite/React build (`./assets/*.js`, `*.css`)               | ✅        | Own path is in `script-src`/`style-src` — no inlining needed                                                                                                                                                                     |
+| `<img src="https://cdn…/x.png">`                                       | ❌        | No external host in `img-src`                                                                                                                                                                                                    |
+| Google Fonts / any external stylesheet, script, or font                | ❌        | External hosts are never allow-listed (only your egress hosts — granted `http:outbound:<host>` plus admin-added `operatorEgress` hosts — and those only in `connect-src`, i.e. `fetch`/XHR, never as a script/style/font source) |
 
 Caveats and consequences:
 
@@ -252,21 +255,21 @@ richer (`--warning`/`--info` + the four `--*-soft` fills, `--accent-on`/
 `m.tokens` keys over hardcoding. Fallback values (verify against the source —
 they can drift):
 
-| Token | Light | Dark |
-|---|---|---|
-| `--bg-card` | `#ffffff` | `#131316` |
-| `--bg-primary` | `#ffffff` | `#121215` |
-| `--bg-hover` | `rgba(0,0,0,0.03)` | `rgba(255,255,255,0.06)` |
-| `--text-primary` | `#111827` | `#f4f4f5` |
-| `--text-secondary` | `#374151` | `#d4d4d8` |
-| `--text-muted` | `#6b7280` | `#a1a1aa` |
-| `--text-faint` | `#9ca3af` | `#71717a` |
-| `--border-faint` | `rgba(0,0,0,0.06)` | `rgba(255,255,255,0.07)` |
-| `--accent` | `#111827` | `#e4e4e7` |
-| `--accent-text` | `#ffffff` | `#09090b` |
-| `--accent-hover` | `#1f2937` | `#d4d4d8` |
-| `--success` | `#16a34a` | `#22c55e` |
-| `--danger` | `#dc2626` | `#ef4444` |
+| Token              | Light              | Dark                     |
+|--------------------|--------------------|--------------------------|
+| `--bg-card`        | `#ffffff`          | `#131316`                |
+| `--bg-primary`     | `#ffffff`          | `#121215`                |
+| `--bg-hover`       | `rgba(0,0,0,0.03)` | `rgba(255,255,255,0.06)` |
+| `--text-primary`   | `#111827`          | `#f4f4f5`                |
+| `--text-secondary` | `#374151`          | `#d4d4d8`                |
+| `--text-muted`     | `#6b7280`          | `#a1a1aa`                |
+| `--text-faint`     | `#9ca3af`          | `#71717a`                |
+| `--border-faint`   | `rgba(0,0,0,0.06)` | `rgba(255,255,255,0.07)` |
+| `--accent`         | `#111827`          | `#e4e4e7`                |
+| `--accent-text`    | `#ffffff`          | `#09090b`                |
+| `--accent-hover`   | `#1f2937`          | `#d4d4d8`                |
+| `--success`        | `#16a34a`          | `#22c55e`                |
+| `--danger`         | `#dc2626`          | `#ef4444`                |
 
 > ⚠️ **The `--accent` in this table is monochrome (near-black light / near-white
 > dark) — it is NOT the user's real accent colour.** The actual accent the user
@@ -304,6 +307,7 @@ in the real frame too.
   :root:not([data-theme]) { color-scheme: dark; --bg-card:#131316; --text-primary:#f4f4f5; /* …dark… */ }
 }
 ```
+
 ```js
 function resolveTheme(m) {
   var t = m && typeof m.theme === 'string' ? m.theme.trim().toLowerCase() : ''
@@ -362,22 +366,22 @@ const L = (m.locale || '').toLowerCase().startsWith('de') ? STR.de : STR.en
   `font-variant-numeric: tabular-nums` for counts.
 - **Buttons — TREK's exact spec** (without the kit; the kit's `.trek-btn` already
   bakes all of this, so this block is the by-hand fallback):
-  - Primary: `background:var(--accent); color:var(--accent-text);
+    - Primary: `background:var(--accent); color:var(--accent-text);
     border:none; border-radius:8px` (`--radius-sm`); `padding:6px 16px`;
-    `font-size:12px; font-weight:600`.
-  - Secondary: same geometry, `background:none;
+      `font-size:12px; font-weight:600`.
+    - Secondary: same geometry, `background:none;
     border:1px solid var(--border-primary)` (padding `6px 14px`).
-  - **Press feedback (TREK's signature feel — don't invent your own):**
-    ```css
-    button:not(:disabled) {
-      transition-property: transform, color, background-color, border-color,
-                           box-shadow, opacity, filter;
-      transition-duration: 180ms;
-      transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
-    }
-    button:not(:disabled):active { transform: scale(0.97); transition-duration: 80ms; }
-    ```
-    Scale-press, not `translateY`. Guard with `prefers-reduced-motion`.
+    - **Press feedback (TREK's signature feel — don't invent your own):**
+      ```css
+      button:not(:disabled) {
+        transition-property: transform, color, background-color, border-color,
+                             box-shadow, opacity, filter;
+        transition-duration: 180ms;
+        transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+      }
+      button:not(:disabled):active { transform: scale(0.97); transition-duration: 80ms; }
+      ```
+      Scale-press, not `translateY`. Guard with `prefers-reduced-motion`.
 - In a `sidebar` or scoped-detail widget, call `trek:resize` after every
   render/content change so the card fits exactly (the design kit does this for
   you via a `ResizeObserver`).
@@ -394,7 +398,8 @@ canvas behind dark-theme content. A full-bleed accent bar at the very top edge i
 fine — the card's `overflow-hidden` clips it to the rounded corners.
 
 The card is a native **glassy auto-height tool card** (`--glass-bg/-border/
--shadow/-blur`, `--r-xl`, uppercase title + `Blocks` icon in `--ink-3`). The body
+-shadow/-blur`, `--r-xl`, uppercase title + **your manifest `icon`** in `--ink-3`,
+falling back to `Blocks` if you declare none). The body
 has a **60px min-height floor** and **`trek:resize` drives the real height** (the
 design kit reports it automatically) — `PluginWidgets.tsx`. Keep the root
 chrome-free and let the host draw the card.

@@ -4,8 +4,8 @@
   "author": {
     "name": "fbnlrz"
   },
-  "homepage": "https://github.com/fbnlrz/trek-plugin-skill",
-  "repository": "https://github.com/fbnlrz/trek-plugin-skill",
+  "homepage": "https://github.com/liketrek/Plugin-Skill",
+  "repository": "https://github.com/liketrek/Plugin-Skill",
   "license": "MIT",
   "keywords": ["trek", "plugin", "skill", "trek-plugin-sdk"]
 }
