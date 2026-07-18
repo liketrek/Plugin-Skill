@@ -1,0 +1,57 @@
+name: release
+
+# Fires on a v* tag — which the "set version" workflow can push for you.
+# Builds the distributable archive and attaches it to a GitHub release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate before packaging
+        run: node .github/scripts/validate-skill.mjs
+
+      - name: Check the tag matches the manifest version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          manifest="$(node -p "require('./.codex-plugin/plugin.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$manifest" != "$tag" ]; then
+            echo "✗ tag v$tag does not match .codex-plugin/plugin.json version $manifest" >&2
+            exit 1
+          fi
+          echo "✔ tag and manifest agree on $manifest"
+
+      - name: Package
+        run: python3 .github/scripts/pack-skill.py
+
+      - name: Write release notes
+        run: python3 .github/scripts/release-notes.py > dist/NOTES.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./.codex-plugin/plugin.json').version")"
+          assets=("dist/trek-plugin-dev-$version.zip" "dist/trek-plugin-dev-$version.skill")
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version exists — replacing its assets."
+            gh release upload "v$version" "${assets[@]}" --clobber
+          else
+            gh release create "v$version" --title "v$version" \
+              --notes-file dist/NOTES.md "${assets[@]}"
+          fi
