@@ -1,17 +1,17 @@
 ---
 name: trek-plugin-dev
-description: Build, test, and publish plugins for TREK, the self-hosted travel planner (github.com/mauriceboe/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, local development with trek-plugin-sdk (create/dev/validate/pack), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN or registry CI failures, or preparing a TREK-Plugins registry entry or PR.
+description: Build, test, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, local development with trek-plugin-sdk (create/dev/validate/pack), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN or registry CI failures, or preparing a TREK-Plugins registry entry or PR.
 ---
 
 # TREK Plugin Development
 
-Build plugins for [TREK](https://github.com/mauriceboe/TREK), a self-hosted
+Build plugins for [TREK](https://github.com/liketrek/TREK), a self-hosted
 trip-planning app. A plugin is a directory with a manifest (`trek-plugin.json`),
 a built CommonJS server entry (`server/index.js`), and — for `page`/`widget`/
 `trip-page` types — a static client bundle (`client/`). TREK runs the server part in an
 **isolated child process** reached only over RPC, and the UI in a **sandboxed,
 opaque-origin iframe**. Distribution happens through the
-[TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins) registry: a static
+[TREK-Plugins](https://github.com/liketrek/TREK-Plugins) registry: a static
 index updated by pull request; plugin code and releases stay in the author's
 own public GitHub repo.
 
@@ -309,7 +309,7 @@ user, ready to paste**, so it can be fixed for everyone.
 
 Emit it verbatim in a fenced code block, every field filled from what you
 actually did, then tell the user: *"Copy this and paste it into a new issue at
-<https://github.com/fbnlrz/trek-plugin-skill/issues/new/choose> (pick **📋 Paste
+<https://github.com/liketrek/Plugin-Skill/issues/new/choose> (pick **📋 Paste
 an agent-generated report**) — it's already filled in."*
 
 ````markdown
@@ -338,11 +338,11 @@ against the TREK source or a real instance before claiming a discrepancy.
 
 ## Primary sources
 
-- Wiki: [Plugin-Development](https://github.com/mauriceboe/TREK/wiki/Plugin-Development) ·
-  [Plugin-Permissions](https://github.com/mauriceboe/TREK/wiki/Plugin-Permissions) ·
-  [Plugin-Publishing](https://github.com/mauriceboe/TREK/wiki/Plugin-Publishing) ·
-  [Plugins](https://github.com/mauriceboe/TREK/wiki/Plugins)
-- Registry: [mauriceboe/TREK-Plugins](https://github.com/mauriceboe/TREK-Plugins)
+- Wiki: [Plugin-Development](https://github.com/liketrek/TREK/wiki/Plugin-Development) ·
+  [Plugin-Permissions](https://github.com/liketrek/TREK/wiki/Plugin-Permissions) ·
+  [Plugin-Publishing](https://github.com/liketrek/TREK/wiki/Plugin-Publishing) ·
+  [Plugins](https://github.com/liketrek/TREK/wiki/Plugins)
+- Registry: [liketrek/TREK-Plugins](https://github.com/liketrek/TREK-Plugins)
   (`schema/plugin-entry.schema.json`, `schema/example-entry.json`)
 - SDK: [`trek-plugin-sdk` on npm](https://www.npmjs.com/package/trek-plugin-sdk)
   (source: `plugin-sdk/` in the TREK repo)
