@@ -1,5 +1,6 @@
 {
   "name": "trek-plugin-skill",
+  "description": "Agent skills for building plugins for TREK, the self-hosted travel planner.",
   "owner": {
     "name": "fbnlrz"
   },
