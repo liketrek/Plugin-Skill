@@ -94,6 +94,15 @@ cd /path/to/your-repo && git add .claude && git commit -m "Add trek-plugin-dev s
 
 Then just start a session on the repo — done.
 
+### Upload to claude.ai
+
+Each release ships a packaged archive. Download
+`trek-plugin-dev-<version>.skill` from
+[Releases](https://github.com/liketrek/Plugin-Skill/releases) and drop it into
+the skill upload dialog on claude.ai. The dialog takes a `.zip` or a `.skill`
+containing a `SKILL.md`; the two release assets are byte-identical, so either
+works.
+
 ### Local one-off — CLI, Desktop, or IDE (user-scoped)
 
 If you'd rather install it for **yourself** instead of a repo, the interactive
