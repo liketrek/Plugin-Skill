@@ -37,7 +37,7 @@ module.exports = definePlugin({
         },
     ],
 
-    // Cron jobs — run via node-cron when jobs:run is granted (see below).
+    // Cron jobs — run on their cron schedule when jobs:run is granted (see below).
     jobs: [
         {
             id: 'refresh', schedule: '*/15 * * * *', async handler(ctx) { /* … */
@@ -51,10 +51,9 @@ The routes and job ids on the **loaded definition are authoritative** (a
 route's array index is its internal id); the `routes` block in the manifest is
 never consumed.
 
-> ⚠️ **`jobs[]` need the `jobs:run` grant.** The host-side runner
-> (`plugin-jobs.ts` `scheduleJobs()`) wires each declared job's cron to node-cron
-> and fires `invoke.job` on the tick — **only when `jobs:run` is granted**
-> (without it, jobs never run; an invalid cron is skipped). Jobs run **userless**
+> ⚠️ **`jobs[]` need the `jobs:run` grant.** The host schedules each declared
+> job's cron expression and fires it on the tick — **only when `jobs:run` is
+> granted** (without it, jobs never run; an invalid cron is skipped). Jobs run **userless**
 > (own-`db`/egress/brokers only; trip reads → `RESOURCE_FORBIDDEN`). For
 > future/recurring callbacks under your own control there is also the
 > **persistent `ctx.scheduler`** (`at`/`in`/`every`/`cancel`, same grant), which
@@ -72,11 +71,11 @@ export interface PluginDefinition {
     onUnload?(ctx: PluginContext): Promise<void> | void;
 
     routes?: PluginRoute[];
-    jobs?: PluginJob[];               // run via node-cron under jobs:run (see above)
+    jobs?: PluginJob[];               // cron-scheduled by the host under jobs:run (see above)
     events?: PluginEventSubscription[]; // WIRED reactive hook — needs events:subscribe
     scheduled?(input: { name: string; payload?: unknown }, ctx): Promise<void> | void; // ctx.scheduler callbacks (jobs:run)
-    deleteUserData?(userId: number, ctx): Promise<void> | void; // hook:user-data — GDPR erasure, userless
-    exportUserData?(userId: number, ctx): Promise<unknown>;     // hook:user-data — GDPR export, userless
+    deleteUserData?(input: { userId: number }, ctx): Promise<void> | void; // hook:user-data — GDPR erasure, userless. NOTE: object arg, not a bare number
+    exportUserData?(input: { userId: number }, ctx): Promise<unknown>;     // hook:user-data — GDPR export, userless
     exports?: Record<string, (args, ctx) => unknown>;  // capabilities.provides targets — called by dependents
     subscriptions?: { plugin: string; event: string; handler(payload, ctx): void }[]; // consume a dependency's emits
     hooks?: {                                    // all WIRED — each needs its hook:* grant
@@ -86,6 +85,10 @@ export interface PluginDefinition {
         warningProvider?: WarningProvider;         // getWarnings(tripId, ctx) → {level,message,dayId?,placeId?}[]
         tableContributor?: TableContributor;       // hook:table-contributor — columns/actions on core table views
         mapMarkerProvider?: MapMarkerProvider;     // hook:map-marker-provider
+        mapLayerProvider?: MapLayerProvider;       // hook:map-layer-provider — vector overlays on the trip map
+        routeProvider?: RouteProvider;             // hook:route-provider — routing profiles (capabilities.routeProfiles)
+        dayScheduleProvider?: DayScheduleProvider; // hook:day-schedule-provider — time rows in the day plan
+        dayTintProvider?: DayTintProvider;         // hook:day-tint-provider — colour-coded day cards
         pdfSectionProvider?: PdfSectionProvider;   // hook:pdf-section-provider
         atlasLayerProvider?: AtlasLayerProvider;   // hook:atlas-layer-provider
         journalEntryProvider?: JournalEntryProvider; // hook:journal-entry-provider
@@ -319,7 +322,7 @@ export interface PluginContext {
 > your range cannot install or start your plugin at all.
 >
 > Two consequences:
-> - Set `"trek"` honestly (`">=3.4.0 <4.0.0"`). It is now load-bearing, not a hint: it is
+> - Set `"trek"` honestly (the scaffold writes `">=4.0.0 <5.0.0"`). It is now load-bearing, not a hint: it is
     > what *guarantees* the namespaces you call exist on every host that can run you — and
     > what stops an old instance installing you and failing at runtime.
 > - **Still guard.** The gate is skipped on a host whose `APP_VERSION` is not a semver
@@ -368,11 +371,16 @@ never holds a key/secret; the host brokers the call:
   (`notify:send`) — the recipient is **forced** to the acting user or a trip they
   belong to (admin scope refused); `title` emoji-stripped and ≤ 200, `body`
   ≤ 1000, `link` must be an in-app `/…` path. **Route-only** (needs the acting
-  user).
+  user). **Budgeted: 100 sends/day per plugin**, resetting at UTC midnight —
+  past it the call fails with `daily notification budget exhausted (resets at
+  UTC midnight)`.
 - **`ctx.ai.complete(prompt, system?)` → `{ text }`** and
   **`ctx.ai.extract(text, jsonSchema, prompt?)` → `{ results: object[] }`** (`ai:invoke`) —
   uses the **acting user's** configured provider; 20 000-char cap; the output is
   **data only** (treat it as untrusted text, never as instructions).
+  **Budgeted: 200 calls/day per plugin** (UTC-midnight reset; past it →
+  `daily AI budget exhausted (resets at UTC midnight)`) — design batch/summary
+  flows, not a call per entity.
 - **`ctx.oauth.getAccessToken()` → `string | null`** (`oauth:client`) — a
   short-lived token for a service the user connected via **Settings → Plugins →
   Connect**; `null` when userless or not connected. Route-only in practice.
@@ -402,18 +410,40 @@ permission and called with the plugin `ctx`:
   `getWarnings(tripId, ctx): Promise<{ level: 'info'|'warning'|'error'; message: string; dayId?: number; placeId?: number }[]>`.
   TREK surfaces the returned warnings in the trip planner.
 
-**Six more declarative contribution hooks** (each `hook:*`-gated,
+**Ten more declarative contribution hooks** (each `hook:*`-gated,
 its own consuming controller, host-sanitized — emoji stripped from any text — and
 fail-safe on throw/timeout), so an `integration` can inject **native** UI with no
 iframe of its own:
 
 - **`tableContributor`** (`hook:table-contributor`) — columns/actions on core
   table views (reservations/places/day/costs/packing/files).
-- **`mapMarkerProvider`** (`hook:map-marker-provider`) — markers on the trip map.
-- **`pdfSectionProvider`** (`hook:pdf-section-provider`) — sections in the exported PDF.
-- **`atlasLayerProvider`** (`hook:atlas-layer-provider`) — labelled atlas layers.
-- **`journalEntryProvider`** (`hook:journal-entry-provider`) — rows in journal entries.
-- **`tripCardProvider`** (`hook:trip-card-provider`) — badges/content on dashboard trip cards.
+- **`mapMarkerProvider`** (`hook:map-marker-provider`) — markers on the trip map (≤ 200/plugin).
+- **`mapLayerProvider`** (`hook:map-layer-provider`) — bounded **vector overlays**
+  (polylines/polygons/metric circles: routes, corridors, zones). Budgets per
+  plugin: ≤ 4 layers / ≤ 150 features / ≤ 8000 vertices; width 1–8, opacity
+  0.05–1, radius ≤ 2000 km clamped; drawn beneath TREK's own routes.
+- **`routeProvider`** (`hook:route-provider`) — routing profiles for the
+  planner's route toggle (declare them in `capabilities.routeProfiles`, ≤ 3).
+  **Targeted, not a fan-out**: TREK calls exactly the profile the user picked,
+  with a **20 s** timeout (room for an external solver via your egress).
+  `getRoute({tripId, dayId, profile, waypoints})` — 2–30 located stops in visit
+  order — returns `{coordinates ≤ 10000, distance, duration, legs, viaPoints? ≤ 40}`,
+  validated **whole** (`legs.length` must equal `waypoints−1`; a malformed result
+  is discarded and the planner falls back to straight lines).
+- **`dayScheduleProvider`** (`hook:day-schedule-provider`) — time contributions
+  in the day plan: `{id, dayId, assignmentId?/reservationId?/position?, minutes?,
+  label, tone?}` rows render under their anchor, and `minutes` (1–1440) counts
+  into the day's route-footer total. ≤ 60 items/plugin, label ≤ 120.
+- **`dayTintProvider`** (`hook:day-tint-provider`) — colour-codes whole day cards
+  in the Plan sidebar (and the mobile day chip): per-day `tone`/`color`
+  (`#rrggbb` only) shorthands or per-region `badge*`/`header*`/`activity*`
+  values; you pick the hue, the host clamps alpha/lightness per theme so a day
+  stays readable. One contribution per day, resolved whole (first entry wins,
+  first granted provider wins across plugins); bounded by the trip's day count.
+- **`pdfSectionProvider`** (`hook:pdf-section-provider`) — sections in the exported PDF (≤ 5/plugin; ≤ 20 paragraphs × 2000 chars; table ≤ 8×50).
+- **`atlasLayerProvider`** (`hook:atlas-layer-provider`) — labelled atlas layers (≤ 3/plugin, ≤ 300 countries each).
+- **`journalEntryProvider`** (`hook:journal-entry-provider`) — rows in journal entries (≤ 12/plugin).
+- **`tripCardProvider`** (`hook:trip-card-provider`) — badges on dashboard trip cards (≤ 4 per trip, ≤ 240 total per plugin).
 
 **`photoProvider` / `calendarSource` are wired too**
 (`plugin-photos.controller.ts` / `plugin-calendar.controller.ts` consume them;
@@ -432,8 +462,8 @@ configured it (typically a self-hosted endpoint declared with
 `operatorEgress: true`). `create --template notification-channel` scaffolds one.
 
 There is also a **data-rights hook** `hook:user-data`: define
-`deleteUserData(userId, ctx)` / `exportUserData(userId, ctx)` and the host calls
-them **durably** on account erasure/export. They run **userless** — you get only
+`deleteUserData({ userId }, ctx)` / `exportUserData({ userId }, ctx)` (note the
+**object argument**) and the host calls them **durably** on account erasure/export. They run **userless** — you get only
 a `userId` and act on your **own `db:own`** data; the hook grants no core read.
 Implement it if your plugin stores personal data (GDPR erasure/portability).
 
@@ -467,8 +497,12 @@ module.exports = definePlugin({
 });
 ```
 
-- **`on`** is a core event name (`place:created`, `place:updated`, `day:updated`,
-  `file:created`, `assignment:created`, `budget:updated`, …) or `'*'` for all.
+- **`on`** is a core event name `<family>:<verb>` (`place:created`, `place:updated`,
+  `day:updated`, `file:created`, `assignment:created`, `budget:updated`, …) or `'*'`
+  for all. The SDK exports the authoritative catalog: **`EVENT_FAMILIES`** (the ten
+  families — `trip`, `place`, `day`, `reservation`, `accommodation`, `assignment`,
+  `budget`, `packing`, `dayNote`, `file`) and **`EVENT_SNAPSHOT_GRANT`** (family →
+  the `db:read:*` permission that unlocks its snapshot).
 - **Payload:** `{ event, tripId, entity?, entityId?, snapshot? }` — `entity` is
   the family (e.g. `'reservation'`), `entityId` which entity changed, and
   `snapshot` a whitelisted shallow copy of the changed fields, so you can act
@@ -563,10 +597,12 @@ code**, e.g. `"PERMISSION_DENIED: …"` — catch and match on that.
   callback whose redirect is a relative in-app path (see Routes).
 - Version compatibility: the manifest's **`trek` range IS enforced** (TREK ≥ 3.4.0)
   at install and at activation, with no admin override — see
-  [manifest.md](manifest.md). `apiVersion` is **not**: the server accepts any
-  numeric value and never compares it to `PLUGIN_API_VERSION`, so the `trek` range
-  is the only thing that actually gates compatibility. The one gap is a host with a
-  non-semver `APP_VERSION` (Docker's default `dev`), where the check is skipped.
+  [manifest.md](manifest.md). **`apiVersion` is enforced too**: it must be a
+  positive integer, and a manifest declaring a plugin-API version newer than the
+  host supports is refused at install and won't activate
+  (`API_VERSION_INCOMPATIBLE`) — moot while v1 is the only API, load-bearing the
+  day v2 exists. The one gap in the `trek` gate is a host with a non-semver
+  `APP_VERSION` (Docker's default `dev`), where that check is skipped.
 
 ## Outbound HTTP
 
@@ -588,7 +624,8 @@ See the egress trap in [manifest.md](manifest.md).
 | Crash policy                  | **5 crashes / 5 min → auto-disabled** (status `error`); else restart, backoff capped **30 s**                                                                                                                                  | supervisor                        |
 | SIGTERM→SIGKILL grace         | **3 s**                                                                                                                                                                                                                        | supervisor                        |
 | Artifact (install)            | 25 MB/file, 50 MB total, 4000 entries                                                                                                                                                                                          | `install/safe-extract.ts`         |
-| **RPC rate limit**            | Per-plugin token bucket at the `ctx` dispatch boundary: **burst 60, 20/s, 16 in-flight** (env `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`). A runaway plugin is throttled instead of freezing the single-threaded host. | `host/rate-limit.ts`              |
+| **RPC rate limit**            | Per-plugin token bucket at the `ctx` dispatch boundary: **burst 60, 20/s, 16 in-flight** (env `TREK_PLUGIN_RPC_BURST` / `_PER_SEC` / `_INFLIGHT`). A runaway plugin is throttled (`HOST_ERROR: rate limit exceeded — slow down ctx.* calls`) instead of freezing the single-threaded host. | `host/rate-limit.ts`              |
+| **Daily broker budgets**      | `ctx.ai.*` **200 calls/day**, `ctx.notify.send` **100/day** per plugin, resetting at **UTC midnight** (env `TREK_PLUGIN_AI_PER_DAY` / `TREK_PLUGIN_NOTIFY_PER_DAY`; `0` disables the broker outright). Exhausted → `daily AI/notification budget exhausted (resets at UTC midnight)`.                                     | `host/daily-budget.ts`            |
 
 ## What plugin code can NOT do
 

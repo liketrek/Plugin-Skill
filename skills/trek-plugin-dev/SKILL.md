@@ -1,6 +1,6 @@
 ---
 name: trek-plugin-dev
-description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, the enforced `trek` TREK-version range, local development with trek-plugin-sdk (create/dev/status/shot/validate/pack), author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a signature/key-rotation problem (SIGNATURE_KEY_CHANGED, re-trust, allow-key-change), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN or a plugin that will not install or activate on a given TREK version, or preparing a TREK-Plugins registry entry or PR.
+description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, the enforced `trek` TREK-version range, local development with trek-plugin-sdk, author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a signature/key-rotation problem (SIGNATURE_KEY_CHANGED, re-trust, allow-key-change), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN / API_VERSION_INCOMPATIBLE or a plugin that will not install or activate on a given TREK version, recovering from a failed publish (rollback, unrelease), or preparing a TREK-Plugins registry entry or PR.
 ---
 
 # TREK Plugin Development
@@ -64,8 +64,10 @@ npx trek-plugin-sdk shot           # → docs/screenshot.png, 1600×900, in the 
 npx trek-plugin-sdk publish --repo you/trek-plugin-my-widget --tag v1.0.0 --sign
 #    = ① check (every offline registry gate) → ② pack → ③ git tag + GitHub release
 #      → ④ preflight (the gates that need the release to exist) → ⑤ registry PR.
-#    If a step-① gate fails, NOTHING is packed, tagged, pushed or released — so you
-#    fix it and re-run against the SAME version. Requires git + gh (authed).
+#    If a step-① gate fails, NOTHING is packed, tagged, pushed or released — and if a
+#    LATER step fails, publish ROLLS BACK the release/tags it created, so either way
+#    you fix and re-run against the SAME version (--keep-release opts out;
+#    `unrelease <tag>` cleans up an already-stranded state). Requires git + gh (authed).
 #    In a TERMINAL, publish OFFERS to sign and creates the key for you — --sign is
 #    only needed in scripts/CI, which are never prompted. (keygen makes the key by
 #    hand: ~/.trek-plugin/signing.key — ONCE, ever, for all your plugins. BACK IT UP.)
@@ -86,7 +88,9 @@ from *you*, not merely that the registry vouched for some bytes — so a comprom
 registry can't ship code under your name. In a terminal `publish` proposes it and
 makes the key for you; in scripts/CI, which are never prompted, pass `--sign`.
 Signing **late is fine** — unsigned → signed at v1.4.0 breaks nobody, because
-nothing is pinned until a signed version installs. The thing you cannot do is
+nothing is pinned until a signed version installs; the SDK **retro-signs your
+older versions automatically** on the first signed update (the registry requires
+every version signed once a key is present). The thing you cannot do is
 *stop* (see rule 12), so the only decision that ever really binds is whether
 you'll keep the key safe. Back it up and sign.
 
@@ -149,18 +153,20 @@ See [references/testing.md](references/testing.md).
 | `widget`      | Dashboard card (`sidebar` slot — glassy auto-height) or a **non-interactive** boarding-pass hero strip (`hero` slot, ~110px, desktop-only); plus the scoped planner slots `place-detail` (gets `placeId`), `day-detail` (`dayId`), and `reservation-detail` (`reservationId`) | At-a-glance info (flight status, weather, mascot); a per-place/day/reservation add-on |
 | `page`        | Own entry in the top navigation → full-page iframe (you own the layout)                                                                                                                                                                                                       | A self-contained tool                                                                 |
 | `trip-page`   | A tab **inside every trip planner**, scoped to the open trip (`tripId` always set); full-frame like `page`, no dashboard nav. `capabilities.tripPage` can replace core tabs / set tab position (tab-takeover)                                                                 | A per-trip tool                                                                       |
-| `integration` | No UI; background routes, jobs, events, plus **wired provider hooks** (place-detail / trip-warning / table / map-marker / pdf-section / atlas-layer / journal-entry / trip-card / photo / calendar)                                                                           | Feeding/syncing data; enriching core UI natively                                      |
+| `integration` | No UI; background routes, jobs, events, plus **wired provider hooks** (place-detail / trip-warning / table / map-marker / map-layer / route / day-schedule / day-tint / pdf-section / atlas-layer / journal-entry / trip-card / photo / calendar / notification-channel)      | Feeding/syncing data; enriching core UI natively                                      |
 
 Note: **`jobs[]` need the `jobs:run` grant** — with it, declared cron jobs run
-via node-cron (userless); without it they never fire. The persistent
+on their cron schedule (userless); without it they never fire. The persistent
 **`ctx.scheduler`** (`at`/`in`/`every`/`cancel`, same grant) adds
 restart-surviving one-shot/recurring callbacks into a `scheduled` handler. **To
 react to core activity, declare `events`:** `events: [{ on, handler }]` +
 `events:subscribe`; the handler gets `{ event, tripId, entity?, entityId?,
 snapshot? }` (`snapshot` only when you also hold the family's `db:read:*`), runs
-with no user, fire-and-forget. All ten **provider hooks are wired**
-(place-detail / trip-warning / table / map-marker / pdf-section / atlas-layer /
-journal-entry / trip-card / photo / calendar), plus the GDPR **`hook:user-data`**
+with no user, fire-and-forget (the SDK exports the family catalog as
+`EVENT_FAMILIES` / `EVENT_SNAPSHOT_GRANT`). All fifteen **provider hooks are
+wired** (place-detail / trip-warning / table / map-marker / map-layer / route /
+day-schedule / day-tint / pdf-section / atlas-layer / journal-entry / trip-card /
+photo / calendar / notification-channel), plus the GDPR **`hook:user-data`**
 (`deleteUserData`/`exportUserData`, userless, own-db) — so an `integration` can
 inject native UI or honour data-rights with no iframe. See
 [references/server-api.md](references/server-api.md).
@@ -220,8 +226,8 @@ inject native UI or honour data-rights with no iframe. See
    `trips.update`) can be `undefined` on a host that predates them.** Your
    `"trek"` range is what prevents that, and **since TREK 3.4.0 it is enforced**:
    an instance outside the range refuses to install *or* activate your plugin. So
-   declare it honestly — `"trek": ">=3.4.0 <4.0.0"` — and the namespaces you need
-   are guaranteed present on every host that can run you.
+   declare it honestly — the scaffold writes `"trek": ">=4.0.0 <5.0.0"` — and the
+   namespaces you need are guaranteed present on every host that can run you.
    **Still guard anyway**, for the one hole the gate leaves: a host whose
    `APP_VERSION` is not a semver version (the Docker default is the literal `dev`)
    cannot be compared to a range, so the check is skipped and an unversioned build
@@ -287,7 +293,10 @@ inject native UI or honour data-rights with no iframe. See
     it is the one security property only you can supply.
     It is a **one-way door you may walk through late**: unsigned → signed at any
     version breaks nobody (nothing is pinned until a signed version installs), so
-    "sign from v1.0.0 or never" is simply false. But once a plugin has shipped
+    "sign from v1.0.0 or never" is simply false — and the first signed update
+    **retro-signs the older versions for you** (each pinned artifact is downloaded,
+    verified against its sha256, and signed with the same key; the registry requires
+    every version signed once a key appears). But once a plugin has shipped
     signed, TREK refuses — on every instance that already has it — an update that
     drops the key, changes the key, or ships an unsigned version, and **registry CI
     blocks all three before merge**. `publish` also refuses an unsigned release of
@@ -383,9 +392,11 @@ inject native UI or honour data-rights with no iframe. See
   that the plugin won't work there. `"install latest"` resolves to the newest
   version this TREK can run, and an update that would drag a working plugin *out*
   of compatibility is refused rather than performed.
-- Current plugin API: `apiVersion: 1` (`PLUGIN_API_VERSION`) — declared, but **not
-  enforced** at install (no version negotiation; the `trek` range is what actually
-  gates). Artifact limits: 25 MB/file, 50 MB total, 4000 zip entries.
+- Current plugin API: `apiVersion: 1` (`PLUGIN_API_VERSION`) — **enforced**: it must
+  be a positive integer, and a manifest declaring a version newer than the host
+  supports is refused at install and won't activate (`API_VERSION_INCOMPATIBLE`,
+  no admin override). The `trek` range remains the day-to-day compatibility gate.
+  Artifact limits: 25 MB/file, 50 MB total, 4000 zip entries.
 
 ## Canonical examples
 

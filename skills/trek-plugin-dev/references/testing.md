@@ -233,7 +233,9 @@ other assets byte-verbatim), `/api/<path>` (your routes), and **`/preview`**: a
 **themed host** that embeds `/ui` in a sandboxed opaque-origin iframe (exactly
 TREK's isolation) and speaks the full bridge — it posts `trek:context` with
 **light/dark + accent + appearance toggles**, proxies `trek:invoke` to `/api`,
-and handles resize/notify/navigate. So you preview the themed UI **without any
+and handles resize/notify/navigate, the `trek:session:*` storage (real quotas +
+error codes), and `trek:geolocation` (refused with `forbidden` when
+`geolocation:read` isn't granted, like the host). So you preview the themed UI **without any
 harness** — just open `/preview`.
 
 `/preview` still sets **no CSP** (like `/ui`), so it reproduces the sandbox +
@@ -375,6 +377,10 @@ export interface MockHostOptions {
   // inter-plugin + per-user + broker fixtures:
   pluginExports?; declaredEmits?; userSettings?; tags?; journals?; journalEntries?; collections?;
   atlasVisited?; atlasBucketList?; vacayPlan?; categories?; weatherResult?; ratesResult?; aiText?; aiResults?; oauthAccessToken?;
+  /** Daily broker budgets, modelled like the host (defaults 200 / 100; 0 disables the
+   *  broker — the FIRST call fails with the host's exact exhaustion message). Plain
+   *  counters: the mock never rolls the UTC window — make a fresh host per test. */
+  aiPerDay?: number; notifyPerDay?: number;
   /** Fixtures keyed by trip id; `members` gates access like the real host. */
   trips?: Record<number, { members: number[]; data?: unknown;
                            places?: unknown[]; reservations?: unknown[];
@@ -523,6 +529,12 @@ Notes:
   equal the acting user (else `RESOURCE_FORBIDDEN`), a `'trip'` target is
   membership-checked, `link` must be an in-app `/…` path (not `//…`, ≤ 512).
   Assert on the **`notifications`** array.
+- **Daily budgets and `ctx.meta` quotas are enforced** like the host: `ai.*`
+  and `notify.send` fail with `daily AI/notification budget exhausted (resets at
+  UTC midnight)` past `aiPerDay`/`notifyPerDay` (defaults 200/100; `0` disables
+  the broker), and `meta.set` enforces key ≤ 256 chars, value ≤ 64 KB serialized,
+  ≤ 100 keys per entity — in the host's check order — so a test can prove your
+  plugin backs off instead of discovering the limits in production.
 - **member management + per-trip rights:** `addMember`/`removeMember`
   need `db:write:members` + the fixture's `can.member_manage`, verify the target
   exists, no-op for owner/existing member (`joined:false`), and refuse removing

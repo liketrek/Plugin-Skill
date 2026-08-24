@@ -82,7 +82,7 @@ Per version — required: `version`, `gitTag`, `commitSha`, `downloadUrl`,
 | `commitSha`                         | 40-hex commit the tag resolves to (tags are movable; the commit pins what was reviewed).                                                                                                                                                                                                                                                                                                                                                           |
 | `downloadUrl`                       | Must start with `https://github.com/`, `https://codeload.github.com/`, or `https://objects.githubusercontent.com/`.                                                                                                                                                                                                                                                                                                                                |
 | `sha256`                            | 64-hex of the exact artifact bytes.                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `trek`                              | The manifest's `trek` **range**, verbatim (`">=3.2.0 <4.0.0"`). **The only compatibility field a new entry carries** — it is what TREK gates installs and activation on, and the only one that can express an exclusive upper bound. CI checks it matches the manifest at `commitSha`.                                                                                                                                                             |
+| `trek`                              | The manifest's `trek` **range**, verbatim (`">=4.0.0 <5.0.0"`). **The only compatibility field a new entry carries** — it is what TREK gates installs and activation on, and the only one that can express an exclusive upper bound. CI checks it matches the manifest at `commitSha`.                                                                                                                                                             |
 | `minTrekVersion` / `maxTrekVersion` | **Deprecated — don't set them.** `trek` says everything `minTrekVersion` said (it was just the range's lower bound) and says it better; `maxTrekVersion` is *inclusive* and so cannot express `<4.0.0` at all. Still accepted on entries published before `trek` existed, so a TREK too old to read `trek` has something to fall back on — and if a floor *is* present, CI enforces that it agrees with the range. `entry` no longer emits either. |
 | `size`                              | Bytes, 1 … 52 428 800 (50 MB). **Required — a common omission when hand-writing.**                                                                                                                                                                                                                                                                                                                                                                 |
 | `apiVersion`                        | Integer >= 1.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -148,7 +148,9 @@ runs schema/format checks only.)
 | Gate                      | Fails when                                                                                                                                                                                                                                                                                                                                           | Fix                                                                                                                                                                                                                     |
 |---------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | JSON schema               | Entry violates `plugin-entry.schema.json` (incl. unknown keys)                                                                                                                                                                                                                                                                                       | Regenerate with `trek-plugin entry`                                                                                                                                                                                     |
-| id ↔ filename             | `id` ≠ filename or not a valid slug                                                                                                                                                                                                                                                                                                                  | Rename file / fix id                                                                                                                                                                                                    |
+| id ↔ filename             | `id` ≠ filename or not a valid slug — or a **reserved id** (`registry`, `install`, `rescan`; they collide with admin API routes, and TREK's install loader refuses them too)                                                                                                                                                                          | Rename file / fix id                                                                                                                                                                                                    |
+| Version ordering          | `versions[]` is not sorted **newest-first** by semver (`versions[] must be sorted newest-first (found <a> before <b>)`) — the workflow and the gates grade `versions[0]` as the newly published version, so an oldest-first entry would have the wrong commit reviewed                                                                                | Reorder; `entry --merge` keeps the order for you                                                                                                                                                                        |
+| Permission allowlist      | Any manifest permission not on TREK's known-permission list — and not a valid `http:outbound:<host>` — fails with the server's own message, `unknown permission(s): …` (the list is vendored from TREK, so a typo'd permission dies in CI instead of at install on every instance)                                                                     | Fix the permission string (`validate` catches it offline first)                                                                                                                                                         |
 | Owner binding             | Existing id repointed to a different owner (`OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge)                                                                                                                                                                                                                                      | Only the bound owner updates it; a genuine transfer needs a maintainer to apply the **`allow-owner-change`** label (see [Maintainer overrides](#maintainer-overrides))                                                  |
 | Homoglyph / mixed-script  | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek (U+0370–03FF, the full block — Latin+Greek look-alikes like Α/Ο/α **are** caught). Only fires on a *mix*; an all-Cyrillic name is not caught                                                                                                                                  | Use plain ASCII                                                                                                                                                                                                         |
 | Release tag               | `gitTag` doesn't exist or doesn't resolve to `commitSha`                                                                                                                                                                                                                                                                                             | Push the tag; re-run `entry`                                                                                                                                                                                            |
@@ -169,9 +171,6 @@ uses at install (`scripts/lib/verify-signature.mjs` is a port of the host's
 accepts is one the host accepts. Signing itself stays **optional**: an unsigned entry
 passes on its SHA-256 pin alone, exactly as before.
 
-(Reserved ids `registry`, `install`, `rescan` are refused by **TREK's install
-loader** — they collide with admin API route segments — not by the CI script.
-Avoid them regardless.)
 
 ### Maintainer overrides
 
@@ -288,8 +287,14 @@ Two things make this an easy call:
 - **Adopting it later is fine — but you can never stop.** **Unsigned → signed at any
   version breaks nobody**: nothing is pinned until a signed version installs, so a key
   added at v1.4.0 is a real, safe option. (Any doc claiming you must "sign from v1.0.0 or
-  never" is wrong.) Signed → unsigned is what's forbidden, forever — a one-way door (see
-  below). So the only question that actually binds you is *"can I keep a key safe?"*
+  never" is wrong.) One mechanical consequence the SDK handles for you: the registry
+  requires **every** version signed once a key appears in the entry (a mixed entry would
+  strand hosts that resolve an older version after pinning your key), so your first
+  signed update **retro-signs the older versions automatically** — each pinned artifact
+  is downloaded, verified byte-for-byte against its `sha256` (a mismatch refuses: that
+  asset no longer matches its pin), and signed with the same key. Signed → unsigned is
+  what's forbidden, forever — a one-way door (see below). So the only question that
+  actually binds you is *"can I keep a key safe?"*
 
 `authorPublicKey` is the base64 Ed25519 public key; each `signature` is base64 over the
 artifact bytes. The key is **pinned on first install (TOFU)**, and the signature is
@@ -361,6 +366,7 @@ the plugin row, so the Installed list keeps showing *why* an install/update was 
 | `SIGNATURE_INVALID`         | The signature does not verify                                                                                                                                                                                                                                | **No**                                                             |
 | `TREK_VERSION_INCOMPATIBLE` | The plugin's `trek` range excludes the running TREK. Refuses **install** (every path: registry, pinned version, update, sideload, dev-link) and **activation** — so a plugin installed on 3.3 stops starting once the operator upgrades past its upper bound | **No** — the range is *your* statement that it does not work there |
 | `TREK_VERSION_UNKNOWN`      | The installed plugin declares no `trek` range at all, so nothing can vouch for it. Refuses activation                                                                                                                                                        | **No** — publish a version that declares one                       |
+| `API_VERSION_INCOMPATIBLE`  | The manifest's `apiVersion` is newer than the plugin API this TREK supports (currently `1`). Refuses install and activation                                                                                                                                  | **No** — the host genuinely lacks that API                         |
 | `NO_COMPATIBLE_UPDATE`      | An update was requested but no published version is both newer *and* runnable on this TREK. The plugin keeps running on its current code                                                                                                                     | n/a — nothing was changed                                          |
 
 Only `SIGNATURE_KEY_CHANGED` gets an override (`POST /api/admin/plugins/:id/retrust`),
@@ -370,12 +376,20 @@ another. The other three mean the bytes are not what the author signed; there is
 override button at all** for them. An admin confirming a rotation sees both key
 fingerprints, to check the new one with you out of band.
 
-## When `submit` / `publish` can't open the PR (do it by hand)
+## When `submit` / `publish` can't open the PR
 
-If the automated PR step fails for any reason (no `gh`, no auth, a network blip), the
-**release itself is already done** — only the PR is missing, and re-running `publish`
-would refuse to overwrite the released artifact. Don't re-release; just open the one-file
-PR by hand:
+**`publish` rolls a failed run back.** If step 4 (preflight) or step 5 (the PR)
+fails, it deletes the release, remote tag, and local tag that run created — so the
+default recovery is simply: fix the problem and **re-run `publish` with the same
+tag**. Nothing that existed before the run is touched. Two exceptions leave you in
+the old "release exists, PR missing" state:
+
+- you passed **`--keep-release`** (the error printed the manual cleanup commands), or
+- the failure predates the rollback / you released by hand.
+
+In that state you can either clean up and re-run (`trek-plugin unrelease <tag>
+--repo you/repo` deletes all three, refusing a version that is actually published)
+— or keep the release and open the one-file PR by hand:
 
 ```bash
 # 0. `entry` hashes your LOCAL plugin.zip (never downloads) — make sure the
