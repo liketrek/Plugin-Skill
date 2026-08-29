@@ -1,6 +1,6 @@
 ---
 name: trek-plugin-dev
-description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, the enforced `trek` TREK-version range, local development with trek-plugin-sdk, author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a signature/key-rotation problem (SIGNATURE_KEY_CHANGED, re-trust, allow-key-change), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN / API_VERSION_INCOMPATIBLE or a plugin that will not install or activate on a given TREK version, recovering from a failed publish (rollback, unrelease), or preparing a TREK-Plugins registry entry or PR.
+description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, the enforced `trek` TREK-version range, local development with trek-plugin-sdk, author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a key rotation or signature problem (rotate-key, allow-key-change, SIGNATURE_KEY_CHANGED), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN / API_VERSION_INCOMPATIBLE or a plugin that will not install or activate on a given TREK version, recovering from a failed publish (rollback, unrelease), or preparing a TREK-Plugins registry entry or PR.
 ---
 
 # TREK Plugin Development
@@ -299,13 +299,20 @@ inject native UI or honour data-rights with no iframe. See
     every version signed once a key appears). But once a plugin has shipped
     signed, TREK refuses — on every instance that already has it — an update that
     drops the key, changes the key, or ships an unsigned version, and **registry CI
-    blocks all three before merge**. `publish` also refuses an unsigned release of
-    an already-signed plugin at **step 1**, before anything is tagged or released.
-    Only a *key rotation* is recoverable (a
-    maintainer applies `allow-key-change`; every admin must then re-trust it).
+    blocks all three before merge**. `publish` also refuses an unsigned release —
+    or one signed with a **different key** — of an already-signed plugin at
+    **step 1**, before anything is tagged or released.
+    Only a *key rotation* is recoverable, and the SDK now drives it (≥ 1.7.0):
+    **`rotate-key`** rotates without shipping a version, **`publish --sign
+    --allow-key-change`** rotates as part of a release — both re-sign every
+    published version with the new key and open a PR flagged as a rotation. The
+    human half stays human: a maintainer must apply `allow-key-change`, and every
+    admin must re-trust the new key (see
+    [publishing.md](references/publishing.md#rotating-the-key)).
     Dropping the key or shipping an unsigned version has **no override at all**.
-    → **Back up `~/.trek-plugin/signing.key`.** Losing it doesn't just cost you the
-    key; it strands every existing install until each admin re-trusts a new one.
+    → **Back up `~/.trek-plugin/signing.key`.** Losing it no longer strands you —
+    `rotate-key` exists — but it still strands every existing install until each
+    admin re-trusts the new key by hand.
 13. **Manifest `routes[]` and `capabilities.nav` are declarative only.** The
     host reads real routes off the loaded `definePlugin` object; a page's nav
     entry is built from **top-level `name` (label) and top-level `icon` (glyph)**

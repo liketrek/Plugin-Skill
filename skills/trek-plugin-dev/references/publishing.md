@@ -163,7 +163,7 @@ runs schema/format checks only.)
 | Egress                    | Any `http:outbound*` permission with `egress[]` missing/empty **and `operatorEgress` not `true`**; a bare `*` in `egress`; `operatorEgress` parity mismatch vs the manifest; or `operatorEgress` without an `http:outbound` permission                                                                                                               | Declare explicit hosts, or set `operatorEgress: true` in **both** manifest and entry                                                                                                                                    |
 | Signature shape           | A `signature` with no `authorPublicKey` (*"…has a signature but the entry has no authorPublicKey — TREK refuses to install a half-signed entry"*), an `authorPublicKey` with no signed version (*"…no version carries a signature — either sign the release or drop the key"*), or a key/signature that doesn't parse                                | Sign properly with `--sign`, or drop the key entirely                                                                                                                                                                   |
 | Signature verify          | The `signature` **does not verify** against `authorPublicKey` over the downloaded artifact bytes (*"author signature does not verify against authorPublicKey — TREK will refuse this artifact"*)                                                                                                                                                     | Re-sign the **exact uploaded asset**; never sign a re-pack                                                                                                                                                              |
-| Signing downgrade         | The plugin shipped **signed** before and this entry **drops the key**, **changes the key**, or has **any version without a signature** — checked against the entry on the PR base, across **every** `versions[]`, not just the newest                                                                                                                | Keep signing with the same key. A real key rotation needs the **`allow-key-change`** label; dropping the key has **no override**                                                                                        |
+| Signing downgrade         | The plugin shipped **signed** before and this entry **drops the key**, **changes the key**, or has **any version without a signature** — checked against the entry on the PR base, across **every** `versions[]`, not just the newest                                                                                                                | Keep signing with the same key. A real key rotation needs the **`allow-key-change`** label — the SDK builds the rotation PR for you (`rotate-key`, or `publish --sign --allow-key-change`; SDK ≥ 1.7.0, see "Rotating the key" below); dropping the key has **no override**                                                                                        |
 
 **Signatures are verified in CI.** `validate-entry.mjs` runs the *same* verifier TREK
 uses at install (`scripts/lib/verify-signature.mjs` is a port of the host's
@@ -180,7 +180,7 @@ applying a **label** to the PR, which re-runs validation:
 
 | Label                | Lifts                                                                   |
 |----------------------|-------------------------------------------------------------------------|
-| `allow-key-change`   | `authorPublicKey` differs from the entry on the PR base                 |
+| `allow-key-change`   | `authorPublicKey` differs from the entry on the PR base — see "Rotating the key" below for the PR the SDK builds |
 | `allow-owner-change` | The entry's repo owner differs from the `id`'s binding in `OWNERS.json` |
 
 It is a **label**, not a magic string in a commit message or a file in the branch,
@@ -326,13 +326,47 @@ what every instance TOFUs on, whenever it lands.
 Backing out is impossible. Once a plugin has shipped signed, TREK **refuses**, on every
 instance that already has it, an update that (a) drops the key, (b) is signed with a
 *different* key, or (c) has no signature. CI blocks all three before merge (see the gate
-table), and **`publish` now refuses an unsigned release of an already-signed plugin at
-step 1** — before anything is packed, tagged or released. (That guard used to live only in
+table), and **`publish` now refuses (a)–(c) at step 1** — an unsigned release, and (SDK
+≥ 1.7.0) one whose `--sign` key's identity differs from the published `authorPublicKey`
+— before anything is packed, tagged or released. (Those guards used to live only in
 `preflight`, step 4, which runs *after* the immutable GitHub release is cut: the author
 learned their update had to be signed with the tag already burned.)
 
 So **rotating a key is not a routine release.** Every existing install stops updating
-until an admin explicitly **re-trusts** the new key in TREK's admin UI.
+until an admin explicitly **re-trusts** the new key in TREK's admin UI. It is, however,
+no longer manual — see "Rotating the key" below.
+
+### Rotating the key
+
+A rotation (lost key, compromised machine, planned hygiene) is the **one** signing change
+with a sanctioned path, and since SDK 1.7.0 the SDK drives its whole artifact half. Two
+flows, one rule — a rotated entry must have **every** version re-signed with the new key,
+because TREK verifies whichever version it installs against the entry's single
+`authorPublicKey`:
+
+- **`trek-plugin rotate-key`** — rotate **without shipping a version**. Fetches your
+  published registry entry, downloads every pinned artifact, verifies each against its
+  pinned sha256, re-signs all of them with the new key (all-or-nothing), swaps
+  `authorPublicKey`, and opens a registry PR titled as a rotation. `--out entry.json`
+  writes the rotated entry for a hand-made PR instead.
+- **`publish --sign --allow-key-change`** — rotate **as part of a release**. Step 1
+  accepts the new key, the update merges onto the existing entry with the older versions'
+  old-key signatures stripped and re-signed with the new key at submit, and the PR is
+  titled "(key rotation)". The same `--allow-key-change` flag exists on
+  `entry`/`preflight`/`submit`/`release` for hand-assembled flows.
+
+Both PRs say in the body what the SDK cannot do for you, and neither is a formality:
+
+1. a **registry maintainer** must apply the `allow-key-change` label — CI refuses the
+   changed key without it, and authors can't self-serve the label;
+2. **every admin** who already installed the plugin sees `SIGNATURE_KEY_CHANGED` and must
+   re-trust the new key on their instance before they receive another update.
+
+Without `--allow-key-change`, a differing key is still refused everywhere, exactly as
+before — the flag exists so a *deliberate* rotation no longer has to fight the guards
+that exist to catch an *accidental* one (the classic: publishing from a second machine
+whose freshly-generated key isn't the one you published under. That case wants the
+original key restored, not a rotation).
 
 ### Look after the key
 
@@ -346,12 +380,15 @@ The key is a single file, `~/.trek-plugin/signing.key` (mode 0600), and `keygen`
 - **One key for all your plugins** is fine and is the intended usage.
 - Sign from the machine that holds it; `--key <file>` points at it if it lives elsewhere.
 
-**If you lose it** you are not stuck, but it is expensive and entirely manual:
-`keygen` a new one, publish a re-signed version, and get a maintainer to apply
-**`allow-key-change`** on the registry PR. Then **every admin who already installed the
-plugin must re-trust the new key by hand** — until each one does, that instance stops
-receiving your updates. There is no way to do this for them. That is the whole reason the
-backup matters.
+**If you lose it** you are not stuck: `keygen` a new one (the file is gone, so the
+default path is free again — a *compromised* key still on disk needs `--key <file>` for
+the new one, since keygen refuses to overwrite), then run **`trek-plugin rotate-key`**
+(SDK ≥ 1.7.0 — see "Rotating the key" above). The SDK re-signs every published version
+and opens the rotation PR; what stays expensive is the human half: a maintainer must
+apply **`allow-key-change`**, and **every admin who already installed the plugin must
+re-trust the new key by hand** — until each one does, that instance stops receiving your
+updates. There is no way to do this for them. That is the whole reason the backup
+matters.
 
 ### How a refusal looks inside TREK
 
