@@ -94,6 +94,10 @@ export interface PluginDefinition {
         journalEntryProvider?: JournalEntryProvider; // hook:journal-entry-provider
         tripCardProvider?: TripCardProvider;       // hook:trip-card-provider
         notificationChannel?: { send(msg, config, ctx); test?(config, ctx) }; // hook:notification-channel — USERLESS; config = recipient's settings
+        mcpToolProvider?: {                        // mcp:tools — publish MCP tools (see "MCP tools" below)
+            tools: string[];                       // plugin-local names; only ∩ capabilities.mcpTools is advertised
+            callTool(call: { name: string; args: unknown }, ctx): Promise<unknown> | unknown; // runs AS the requesting MCP user
+        };
     };
     actions?: Record<string, (ctx) => Promise<{ ok: boolean; message?: string }>>; // manifest `actions` buttons — user-bound
 }
@@ -199,7 +203,11 @@ export interface PluginContext {
     }; // db:write:collab + collab_edit; Collab addon
     journal: {
         listMine(); getEntries(journeyId);                                            // db:read:journal
-        createEntry(journeyId, input); updateEntry(id, input); deleteEntry(id); createJourney(input); deleteJourney(id)
+        createEntry(journeyId, input); updateEntry(id, input); deleteEntry(id); createJourney(input); deleteJourney(id);
+        // attach a photo to an entry — images only (no SVG), 10 MB decoded / 14 MiB base64,
+        // `name` supplies only the EXTENSION (stored filename is the host's), caption ≤ 2000.
+        // Needs an acting user with edit rights on the journey (viewer → RESOURCE_FORBIDDEN).
+        addEntryPhoto(entryId: number, input: { name: string; content_base64: string; caption?: string }): Promise<unknown>
     }; // db:write:journal; Journey addon
     atlas: {
         visited();
@@ -408,7 +416,10 @@ permission and called with the plugin `ctx`:
   panel. Additive & **fail-safe** — a throw/timeout is skipped, never fatal.
 - **`warningProvider`** (`hook:trip-warning-provider`) —
   `getWarnings(tripId, ctx): Promise<{ level: 'info'|'warning'|'error'; message: string; dayId?: number; placeId?: number }[]>`.
-  TREK surfaces the returned warnings in the trip planner.
+  TREK surfaces the returned warnings in the trip planner — **and to MCP clients**
+  via TREK's own `get_trip_warnings` tool (needs no `mcp:tools`; messages
+  emoji-stripped, ≤ 300 chars, ≤ 20 warnings per provider, 5 s per-provider
+  budget, a slow/throwing provider contributes `[]`).
 
 **Ten more declarative contribution hooks** (each `hook:*`-gated,
 its own consuming controller, host-sanitized — emoji stripped from any text — and
@@ -469,11 +480,94 @@ Implement it if your plugin stores personal data (GDPR erasure/portability).
 
 The `hook:*` grant is **enforced at dispatch**: core only wires a provider that is
 active, implements the hook in code, **and** holds the matching `hook:*`
-permission. If a provider "never fires", check the manifest `permissions` first.
+permission (for `mcpToolProvider` the grant is **`mcp:tools`** — the one hook
+permission not named `hook:*`). If a provider "never fires", check the manifest
+`permissions` first.
 
 Hooks feed **core UI** without your own iframe; the scoped **widget slots**
 (`place-detail`/`day-detail`/`reservation-detail`) are the other route (your own
 sandboxed panel — see [client-bridge.md](client-bridge.md)).
+
+## MCP tools — `mcpToolProvider` (`mcp:tools`)
+
+A plugin can publish tools on **TREK's own MCP server**, so an assistant a user
+connected to TREK can call into the plugin. Three parts, all required:
+
+1. **`capabilities.mcpTools`** in the manifest — the signed, consented
+   declaration (name/description/schema/annotations, ≤ 8 tools; full shape and
+   limits in [manifest.md](manifest.md)).
+2. **The `mcp:tools` permission** — the only hook grant not named `hook:*`.
+   Declaring the capability without it fails `validate` *and* install.
+3. **`hooks.mcpToolProvider`** on the definition:
+
+```js
+hooks: {
+  mcpToolProvider: {
+    tools: ['pin_note', 'list_notes'],          // plugin-local names
+    async callTool({ name, args }, ctx) {       // ONE function for all tools
+      if (name === 'pin_note') { /* … */ }
+      return { pinned: true }                   // any JSON value; host builds the MCP envelope
+    },
+  },
+},
+```
+
+Semantics — each of these bites:
+
+- **Only the intersection of `capabilities.mcpTools[].name` and the code's
+  `tools` array is advertised — silently.** Declared-but-unimplemented is
+  dropped without a warning; implemented-but-undeclared is never advertised
+  (the manifest is what the admin consented to, the `tools` array is not). So
+  **a tool that vanishes from `tools/list` is almost always a name mismatch
+  between the two lists** — nothing anywhere will tell you. Keep them
+  identical.
+- **Advertised names are prefixed: `plugin_<id>_<name>`.** `callTool` receives
+  the **local** name, without the prefix. A local name colliding with a TREK
+  built-in tool is skipped with a host-side warn. Global cap: **32 plugin tools
+  across all plugins** (over → dropped with a host log).
+- **`callTool` runs as the requesting MCP user — route-like, not userless.**
+  The host binds the acting user from the MCP session (the plugin can never
+  name one); user-scoped `ctx.*` namespaces work exactly as in a route handler,
+  membership-checked against *that* user. `mcp:tools` itself unlocks **no** ctx
+  method — the tool can only do what your other grants allow. Timeout: **15 s**
+  (the longest of any hook). Demo users are refused before your code runs.
+- **Arguments are validated against your declared `inputSchema` before
+  `callTool` runs** — the host builds a real validator from the schema it
+  advertises. `required` is enforced; `additionalProperties: false` **rejects**
+  extras (otherwise they pass through untouched); `enum`/`const`/ranges/
+  `pattern`/`format` are enforced. **`default` is advertisement only — the host
+  does NOT inject it; apply defaults yourself.**
+- **A throw is a tool error, not a crash:** the assistant sees
+  `Plugin "<id>" could not run "<name>": <message>` (sanitised, ≤ 300 chars).
+- **Results are capped:** 64 KiB across the whole result, ≤ 32 content blocks —
+  over-budget output is truncated with a visible `[truncated: …]` block. Return
+  a plain JSON value (the host serialises it, bounded) or a pre-shaped
+  `{ content: [{type:'text',text}], isError? }`.
+- **Every string the assistant reads is sanitised** (tool titles/descriptions,
+  schema descriptions, enum members, your error text): control characters and
+  bidi overrides stripped, **newlines collapsed to spaces** (so plugin text
+  can't fake a markdown heading or system prompt), emoji stripped, length-capped.
+- **Annotations are clamped against your grants:** `readOnlyHint: true` is
+  *lowered* if the plugin holds any write-ish grant (anything beyond
+  `db:read:*`/`*:read`/`db:own`/`hook:*`/`mcp:tools`/`events:subscribe`);
+  `openWorldHint` is forced **true** if you hold any `http:outbound*`;
+  `destructiveHint` defaults **true** unless read-only or explicitly `false`.
+- **Caller side:** the MCP client's token needs the **`plugins:use`** OAuth
+  scope — deliberately coarse (not per-plugin/per-tool) and **opt-in only**
+  (never in the default scope set; static `trek_` tokens and web-session JWTs
+  have full access). The scope grants no data access of its own — the plugin
+  acts with the grants the **admin** consented to, which is the real boundary.
+- **The tool surface is frozen per MCP session** (at `initialize`). Any admin
+  lifecycle change — activate/deactivate/update/retrust/uninstall, or an addon
+  flip that affects a plugin — **closes every live MCP session**; clients pick
+  up the new surface on re-initialize. The dev-link **Reload does *not***
+  invalidate sessions — reconnect your MCP client yourself after changing
+  `tools`.
+
+Admin → Plugins shows the tools a plugin will advertise, and `trek-plugin dev`
+warns at load about a `mcpToolProvider` without the `mcp:tools` grant (and 403s
+`/__dev/fire/hook/mcpToolProvider/callTool`), like any other hook — see
+[testing.md](testing.md).
 
 ## Event subscriptions
 

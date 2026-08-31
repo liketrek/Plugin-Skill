@@ -1,6 +1,6 @@
 ---
 name: trek-plugin-dev
-description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner (github.com/liketrek/TREK). Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, the enforced `trek` TREK-version range, local development with trek-plugin-sdk, author signing (keygen/--sign, Ed25519 trust-on-first-use), and publishing to the TREK-Plugins community registry including every CI gate. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing a plugin or handling a key rotation or signature problem (rotate-key, allow-key-change, SIGNATURE_KEY_CHANGED), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN / API_VERSION_INCOMPATIBLE or a plugin that will not install or activate on a given TREK version, recovering from a failed publish (rollback, unrelease), or preparing a TREK-Plugins registry entry or PR.
+description: Build, test, sign, and publish plugins for TREK, the self-hosted travel planner. Covers the trek-plugin.json manifest, the definePlugin server API and ctx object, the sandboxed iframe postMessage bridge for widget/page UIs, permissions and egress rules, plugin MCP tools (capabilities.mcpTools, mcp:tools), the enforced `trek` TREK-version range, local development with trek-plugin-sdk, author signing (keygen/--sign, Ed25519 TOFU), and publishing to the TREK-Plugins registry and its CI gates. Use when creating or modifying a TREK plugin, working with trek-plugin-sdk or trek-plugin.json, signing or handling a key rotation or signature problem (rotate-key, allow-key-change, SIGNATURE_KEY_CHANGED), debugging PERMISSION_DENIED / RESOURCE_FORBIDDEN / TREK_VERSION_INCOMPATIBLE / TREK_VERSION_UNKNOWN / API_VERSION_INCOMPATIBLE or a plugin that will not install or activate on a given TREK version, recovering from a failed publish (rollback, unrelease), or preparing a TREK-Plugins registry entry or PR.
 ---
 
 # TREK Plugin Development
@@ -141,8 +141,9 @@ suggestions derived from what the plugin does**:
 - Either way, open `dev`'s themed **`/preview`** (light/dark/accent toggles) while you
   iterate, present the image(s), ask *"does this look right?"*, and iterate. The
   approved shot doubles as the store `docs/screenshot.png` — which is a **hard
-  registry gate**, and `validate`/`status` now fail if it doesn't resolve to a real
-  file on disk.
+  registry gate** on exactly that path (the store card loads it; a README image
+  under any other name doesn't count), and `validate`/`status` fail when the
+  file is missing.
 
 See [references/testing.md](references/testing.md).
 
@@ -168,7 +169,13 @@ wired** (place-detail / trip-warning / table / map-marker / map-layer / route /
 day-schedule / day-tint / pdf-section / atlas-layer / journal-entry / trip-card /
 photo / calendar / notification-channel), plus the GDPR **`hook:user-data`**
 (`deleteUserData`/`exportUserData`, userless, own-db) — so an `integration` can
-inject native UI or honour data-rights with no iframe. See
+inject native UI or honour data-rights with no iframe. A plugin of **any type**
+can also publish **MCP tools** on TREK's own MCP server —
+`capabilities.mcpTools` (≤ 8, declared + consented) + the **`mcp:tools`**
+permission + a `hooks.mcpToolProvider` whose `tools` array names the same
+tools: each is advertised to connected assistants as `plugin_<id>_<name>`
+behind the opt-in `plugins:use` OAuth scope, and `callTool` runs **as the
+requesting user** (route-like ctx, 15 s timeout). See
 [references/server-api.md](references/server-api.md).
 
 ## Critical rules (violating any of these breaks install or CI)
@@ -203,9 +210,14 @@ inject native UI or honour data-rights with no iframe. See
    it (your `hooks: {}` live in `server/index.js`, which the manifest validator never
    loads); the *only* automatic check is **`trek-plugin dev`**, which warns at load and
    403s if you fire one (SDK ≥ 1.5.0). **Run `dev` once before you publish and read the
-   banner.** The lone exception is the notification channel — it's declared in the
-   manifest (`capabilities.notificationChannel`), so `validate` does catch a missing
-   `hook:notification-channel`.
+   banner.** Two exceptions live in the manifest and so *are* caught by `validate`:
+   the notification channel (`capabilities.notificationChannel` without
+   `hook:notification-channel`) and MCP tools (`capabilities.mcpTools` without
+   `mcp:tools`). MCP tools add a **second** silent trap all their own: only the
+   **intersection** of `capabilities.mcpTools[].name` and the code's
+   `hooks.mcpToolProvider.tools` array is advertised — a name mismatch drops the
+   tool silently, and **no tool checks it anywhere** (not `validate`, not `dev`,
+   not the mock host). Keep the two lists identical by eye.
 5. **`ctx.trips`, `ctx.users`, `ctx.costs`, `ctx.ws.*` — and
    `ctx.packing`/`ctx.files`/`ctx.places`/`ctx.days`/`ctx.itinerary`/`ctx.trips.update`/`ctx.meta` — work
    only inside route handlers** (they need the acting user the host binds from the

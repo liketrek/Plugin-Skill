@@ -118,7 +118,7 @@ Dev refuses the same four, **loudly** (SDK ≥ 1.5.0):
 
 | Permission                                        | Production when it's MISSING                                                                                    | Dev                                                               |
 |---------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
-| `hook:<name>` (e.g. `hook:trip-warning-provider`) | The supervisor **silently skips you** — the hook is never invoked                                               | ⚠️ warns at load; `/__dev/fire/hook/<provider>/<fn>` → **403**    |
+| `hook:<name>` (e.g. `hook:trip-warning-provider`) — for `mcpToolProvider` the grant is **`mcp:tools`** | The supervisor **silently skips you** — the hook is never invoked                                               | ⚠️ warns at load; `/__dev/fire/hook/<provider>/<fn>` → **403**    |
 | `hook:user-data`                                  | `deleteUserData` / `exportUserData` are never called                                                            | ⚠️ warns at load; firing them → **403**                           |
 | `events:subscribe`                                | Core events are **never delivered** to you                                                                      | ⚠️ warns at load; `/__dev/fire/event/<name>` → **403**            |
 | `jobs:run`                                        | **No job is scheduled at all**; `ctx.scheduler.set` is denied, so `scheduled` never fires either                | ⚠️ warns at load; firing a job/scheduled → **403**                |
@@ -450,7 +450,7 @@ the host do — so `grants` must include them or the driver throws `PermissionDe
 |------------------------------------------------|---------------------------------|
 | `job()` · `scheduled()`                        | `jobs:run`                      |
 | `event()`                                      | `events:subscribe`              |
-| `hook(name, …)` · `channel.send()` / `.test()` | that hook's `hook:*` permission |
+| `hook(name, …)` · `channel.send()` / `.test()` | that hook's `hook:*` permission (`mcpToolProvider` → `mcp:tools`) |
 | `deleteUserData()` · `exportUserData()`        | `hook:user-data`                |
 
 This is deliberate: a unit test that fires a hook you never declared would pass while the
@@ -541,6 +541,20 @@ Notes:
   the owner. Set `canEditPlaces`/`canEditDays`/`canEditTrip` or a `can` entry
   (`reservation_edit`/`packing_edit`/`collab_edit`/`file_*`) to `false` to test
   the permission-denied write paths.
+- **MCP tools:** `run(def).hook('mcpToolProvider', 'callTool', { name: 'x', args: {…} })`
+  fires your tool handler user-bound and throws `PermissionDenied` without the
+  `mcp:tools` grant — but the mock does **not** check the call against
+  `capabilities.mcpTools`, validate the args against your `inputSchema`, or model
+  the host's manifest∩implementation intersection. So the classic failure — a
+  name mismatch between `capabilities.mcpTools[].name` and the code's `tools`
+  array, which makes the tool **silently unadvertised** in production — has **no
+  local check anywhere**; eyeball the two lists, or verify on a real TREK
+  (see [server-api.md](server-api.md)).
+- **`journal.addEntryPhoto` is modelled** like the host: needs
+  `db:write:journal` + an acting user + the Journey addon; unknown entry →
+  `RESOURCE_FORBIDDEN`; the image extension allowlist (no SVG) and the 14 MiB
+  base64 cap are enforced. Attached photos aren't exposed on the mock —
+  assert on the call's return value.
 - **addon-off pattern generalises:** each of `budgetAddonEnabled` /
   `journeyAddonEnabled` / `atlasAddonEnabled` / `vacayAddonEnabled` /
   `collectionsAddonEnabled` / `collabAddonEnabled` (all default true) → set

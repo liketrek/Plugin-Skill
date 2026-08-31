@@ -150,7 +150,7 @@ runs schema/format checks only.)
 | JSON schema               | Entry violates `plugin-entry.schema.json` (incl. unknown keys)                                                                                                                                                                                                                                                                                       | Regenerate with `trek-plugin entry`                                                                                                                                                                                     |
 | id ↔ filename             | `id` ≠ filename or not a valid slug — or a **reserved id** (`registry`, `install`, `rescan`; they collide with admin API routes, and TREK's install loader refuses them too)                                                                                                                                                                          | Rename file / fix id                                                                                                                                                                                                    |
 | Version ordering          | `versions[]` is not sorted **newest-first** by semver (`versions[] must be sorted newest-first (found <a> before <b>)`) — the workflow and the gates grade `versions[0]` as the newly published version, so an oldest-first entry would have the wrong commit reviewed                                                                                | Reorder; `entry --merge` keeps the order for you                                                                                                                                                                        |
-| Permission allowlist      | Any manifest permission not on TREK's known-permission list — and not a valid `http:outbound:<host>` — fails with the server's own message, `unknown permission(s): …` (the list is vendored from TREK, so a typo'd permission dies in CI instead of at install on every instance)                                                                     | Fix the permission string (`validate` catches it offline first)                                                                                                                                                         |
+| Permission allowlist      | Any manifest permission not on TREK's known-permission list — and not a valid `http:outbound:<host>` — fails with the server's own message, `unknown permission(s): …` (the list is a **manually regenerated snapshot** vendored from TREK, so a typo'd permission dies in CI instead of at install on every instance — but a *brand-new* TREK permission can also fail here until a maintainer refreshes the snapshot)                                                                     | Fix the permission string (`validate` catches a typo offline first); a legitimate new permission needs the registry's snapshot regenerated — ask a maintainer                                                                                                                                                         |
 | Owner binding             | Existing id repointed to a different owner (`OWNERS.json`: id → `{ boundOwner, repo }`, stamped on first merge)                                                                                                                                                                                                                                      | Only the bound owner updates it; a genuine transfer needs a maintainer to apply the **`allow-owner-change`** label (see [Maintainer overrides](#maintainer-overrides))                                                  |
 | Homoglyph / mixed-script  | `name` mixes Latin `[A-Za-z]` **with** Cyrillic (U+0400–04FF) or Greek (U+0370–03FF, the full block — Latin+Greek look-alikes like Α/Ο/α **are** caught). Only fires on a *mix*; an all-Cyrillic name is not caught                                                                                                                                  | Use plain ASCII                                                                                                                                                                                                         |
 | Release tag               | `gitTag` doesn't exist or doesn't resolve to `commitSha`                                                                                                                                                                                                                                                                                             | Push the tag; re-run `entry`                                                                                                                                                                                            |
@@ -181,7 +181,8 @@ applying a **label** to the PR, which re-runs validation:
 | Label                | Lifts                                                                   |
 |----------------------|-------------------------------------------------------------------------|
 | `allow-key-change`   | `authorPublicKey` differs from the entry on the PR base — see "Rotating the key" below for the PR the SDK builds |
-| `allow-owner-change` | The entry's repo owner differs from the `id`'s binding in `OWNERS.json` |
+| `allow-owner-change` | The entry's repo owner differs from the `id`'s binding in `OWNERS.json` (also required for any PR that edits `OWNERS.json` itself) |
+| `allow-removal`      | The PR **deletes or renames** an entry file under `registry/plugins/` — removals are refused without it, because installed instances still resolve the entry |
 
 It is a **label**, not a magic string in a commit message or a file in the branch,
 **on purpose**: labelling needs triage/write permission on the registry, which a fork
@@ -194,17 +195,17 @@ that already has the plugin, so merging one is simply a broken entry.
 
 ### README gates (`check-readme.mjs`, fetched from your repo at the pinned commit)
 
-The SDK ports these **line for line** and runs them offline in `status`/`validate`
-against your working tree, and again in `preflight` against the README **at the
-pinned commit**. The two disagree exactly when you wrote the README and didn't
-commit it — a green tree and a red tag — which is the failure the network pass
-exists to catch.
+The SDK ports these and runs them offline in `status`/`validate` against your
+working tree, and again in `preflight` against the README **at the pinned
+commit**. The two disagree exactly when you wrote the README and didn't commit
+it — a green tree and a red tag — which is the failure the network pass exists
+to catch.
 
 | Gate              | Requirement                                                                                                                                                                                                                                                                                                    |
 |-------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Exists            | `README.md` at the repo root                                                                                                                                                                                                                                                                                   |
 | Sections          | Tokens **What it does**, **Screenshots**, **Permissions**, **Setup** — each matched **case-insensitively as a substring of any heading, level 1–6** (so `## Setup instructions` or `# Screenshots & demo` count)                                                                                               |
-| Screenshot        | At least one image whose URL **resolves via a live `GET`** (first 2 KB) with HTTP `Content-Type: image/*`. **`data:` URIs are ignored** (you need a committed file, e.g. `docs/screenshot.png`); `github.com/.../blob/...` links are auto-rewritten to `raw`; relative paths resolve against the pinned commit |
+| Screenshot        | **Exactly `docs/screenshot.png`** must exist **at the pinned commit** and resolve via a live ranged `GET` with HTTP `Content-Type: image/*` — that precise path is what the store card loads (`raw…/<commit>/docs/screenshot.png`), so a README that only links *other* image names fails this gate even though it "has screenshots". `trek-plugin shot` writes exactly this file; commit it. The SDK's `validate` (on disk) and `preflight` (at the pinned commit) check the same exact path — **on SDK builds before the 1.7.0 fix they instead accepted *any* resolving README image**, so a green `validate` there could still fail CI; upgrade |
 | Real prose        | ≥ **400 characters** after stripping headings/code/images/tables/links/HTML comments — a template stub fails                                                                                                                                                                                                   |
 | Placeholders      | No leftover scaffold placeholders: `{{…}}`, `REPLACE_ME`, template prose starting `Describe what/the …`, or a literal `your-name/trek-plugin` path                                                                                                                                                             |
 | Permission parity | **Every permission string in the manifest appears (case-insensitive substring) in the README** — a plain substring test, not proof of a real explanation, but explain each anyway                                                                                                                              |
@@ -222,9 +223,10 @@ chromium`. An `integration` has no UI to render, so `shot` refuses — screensho
 TREK surface your plugin *changes* instead. Everything below still applies to what
 makes a *good* shot.
 
-CI enforces **no dimensions** — `check-readme.mjs` only checks that an image
-reference in the README resolves to a real image at the pinned commit. Size it
-for how the store renders it. The client's `Screenshot` component
+CI enforces **no dimensions** — `check-readme.mjs` checks that
+**`docs/screenshot.png` itself** resolves to a real image at the pinned commit
+(that exact path is the store cover; other image names don't satisfy the gate).
+Size it for how the store renders it. The client's `Screenshot` component
 (`AdminPluginsPanel.tsx`) uses `object-cover` (scales to fill, **crops**,
 centres) in two different boxes:
 
