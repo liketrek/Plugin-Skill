@@ -411,6 +411,9 @@ requesting user** (route-like ctx, 15 s timeout). See
   that the plugin won't work there. `"install latest"` resolves to the newest
   version this TREK can run, and an update that would drag a working plugin *out*
   of compatibility is refused rather than performed.
+- **Instance-scoped settings actions need `trek` `>=4.2.0`.** A host older than that
+  ignores an action's `scope` and renders the button on every user's settings page instead
+  (running it as each user) — see [references/manifest.md](references/manifest.md).
 - Current plugin API: `apiVersion: 1` (`PLUGIN_API_VERSION`) — **enforced**: it must
   be a positive integer, and a manifest declaring a version newer than the host
   supports is refused at install and won't activate (`API_VERSION_INCOMPATIBLE`,

@@ -374,7 +374,8 @@ export interface MockHostOptions {
   config?: Record<string, unknown>;         // becomes ctx.config (frozen; NOT defaulted — see settingDefaults below)
   actingUserId?: number;                    // host-bound user — required for any costs.*
   budgetAddonEnabled?: boolean;             // default true; false → RESOURCE_FORBIDDEN
-  declaredActions?; channelEvents?;   // manifest `actions` / notificationChannel events for the driver
+  declaredActions?: Array<string | { key: string; scope?: 'user' | 'instance' }>; // manifest `actions` for the driver
+  channelEvents?;                           // notificationChannel events for the driver
   // addon-enable flags (each defaults true; false → RESOURCE_FORBIDDEN):
   journeyAddonEnabled?; atlasAddonEnabled?; vacayAddonEnabled?; collectionsAddonEnabled?; collabAddonEnabled?: boolean;
   // inter-plugin + per-user + broker fixtures:
@@ -442,6 +443,7 @@ await drv.deleteUserData(42);
 await drv.exportUserData(42)     // userless GDPR
 await drv.hook('placeDetailProvider', 'getDetails', placeId)  // user-bound
 await drv.action('test_connection')          // manifest `actions` button, user-bound
+await drv.action('purge_cache')  // scope:'instance' in the manifest — admin-bound in the host; the mock gives both scopes the acting-user ctx
 await drv.channel.send(payload);
 await drv.channel.test()  // notification channel
 ```

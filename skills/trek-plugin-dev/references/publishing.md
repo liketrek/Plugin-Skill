@@ -29,6 +29,13 @@ with the packed `plugin.zip` attached as a release asset. Use the uploaded
 asset, never GitHub's auto-generated source archives (wrong layout, unstable
 bytes). The registry pins the asset's **sha256** — released bytes are
 immutable in practice; fix things in a new version.
+Since TREK 4.1.0 an admin can install or switch to **any published version** of your
+plugin straight from the registry entry (**⋯ → Change version**; a deliberate pick that
+is not the newest compatible one pauses that instance's updates until they resume them),
+so every version you have ever published stays live and its released asset must remain
+**byte-identical forever** — never edit or re-upload the asset of a released version;
+ship a new version instead. `unrelease` enforces the same rule from the other side and
+refuses a version the registry has published (see [cli.md](cli.md)).
 
 > **Remote-only tag trap:** if you let `gh release create vX.Y.Z …` create the
 > tag (instead of tagging locally and pushing), the tag exists **only on

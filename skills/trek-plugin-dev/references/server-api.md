@@ -99,7 +99,8 @@ export interface PluginDefinition {
             callTool(call: { name: string; args: unknown }, ctx): Promise<unknown> | unknown; // runs AS the requesting MCP user
         };
     };
-    actions?: Record<string, (ctx) => Promise<{ ok: boolean; message?: string }>>; // manifest `actions` buttons — user-bound
+    actions?: Record<string, (ctx) => Promise<{ ok: boolean; message?: string }>>; // manifest `actions` — bound to whoever CLICKED
+    //   a user for scope:'user', the clicking admin for scope:'instance'; ctx.config + their own ctx.settings either way
 }
 
 // core-event subscription — see "Event subscriptions" below
