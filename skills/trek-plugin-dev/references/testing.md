@@ -71,7 +71,10 @@ Fidelity details:
   `can`/`canEdit*` rights, addon-enable toggles, …) — see the `createMockHost`
   options list below. It also honours **`actingUserId`**, which dev **defaults to
   `1`** when omitted, so the documented one-arg user-bound calls work on a fresh
-  scaffold.
+  scaffold. `dev` also seeds `config` and `userSettings` with the manifest's
+  settings-field **`default`s** (a fixture value wins), mirroring the host's
+  `stored ?? default` rule — so a plugin that relies on its defaults reads them in
+  dev exactly as it will in production.
 
 ```json
 {
@@ -368,7 +371,7 @@ when a grant is missing.
 ```ts
 export interface MockHostOptions {
   grants?: string[];                        // permissions to grant the ctx
-  config?: Record<string, unknown>;         // becomes ctx.config (frozen)
+  config?: Record<string, unknown>;         // becomes ctx.config (frozen; NOT defaulted — see settingDefaults below)
   actingUserId?: number;                    // host-bound user — required for any costs.*
   budgetAddonEnabled?: boolean;             // default true; false → RESOURCE_FORBIDDEN
   declaredActions?; channelEvents?;   // manifest `actions` / notificationChannel events for the driver
@@ -561,6 +564,11 @@ Notes:
   `false` to prove your plugin degrades when the addon is disabled
   (`RESOURCE_FORBIDDEN`).
 - Mock ctx id is `mock-plugin`; `config` is frozen like the real one.
+- **`createMockHost` applies no manifest `default`s** — only `dev` does that for
+  you. To mirror the host's `stored ?? default` rule in a unit test, spread the
+  package-root export `settingDefaults(manifest, scope)` under your own fixtures:
+  `config: { ...settingDefaults(manifest, 'instance'), ...yours }` and
+  `userSettings: { ...settingDefaults(manifest, 'user'), ...yours }`.
 - Differences vs the real host worth knowing: the mock's `trips.getById`
   honors the `asUserId` argument for membership checks (that's the point of
   the fixture `members`), while the **real host ignores `asUserId`** and binds
