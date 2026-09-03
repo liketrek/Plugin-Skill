@@ -410,17 +410,20 @@ the plugin row, so the Installed list keeps showing *why* an install/update was 
 | `SIGNATURE_MISSING`         | Was signed before; this update is unsigned                                                                                                                                                                                                                   | **No**                                                             |
 | `SIGNATURE_INCOMPLETE`      | A key without a signature, or vice versa                                                                                                                                                                                                                     | **No**                                                             |
 | `SIGNATURE_INVALID`         | The signature does not verify                                                                                                                                                                                                                                | **No**                                                             |
-| `TREK_VERSION_INCOMPATIBLE` | The plugin's `trek` range excludes the running TREK. Refuses **install** (every path: registry, pinned version, update, sideload, dev-link) and **activation** — so a plugin installed on 3.3 stops starting once the operator upgrades past its upper bound | **No** — the range is *your* statement that it does not work there |
-| `TREK_VERSION_UNKNOWN`      | The installed plugin declares no `trek` range at all, so nothing can vouch for it. Refuses activation                                                                                                                                                        | **No** — publish a version that declares one                       |
+| `TREK_VERSION_INCOMPATIBLE` | The plugin's `trek` range excludes the running TREK. Refuses **install** (every path: registry, pinned version, update, sideload, dev-link) and **activation** — so a plugin installed on 3.3 stops starting once the operator upgrades past its upper bound | **No** per install — the range is *your* statement that it does not work there. Operator-wide only: `TREK_PLUGINS_IGNORE_TREK_RANGE=1` (TREK ≥ 4.3) turns it into a warning |
+| `TREK_VERSION_UNKNOWN`      | The installed plugin declares no `trek` range at all, so nothing can vouch for it. Refuses activation                                                                                                                                                        | **No** — publish a version that declares one (same operator-wide switch applies) |
 | `API_VERSION_INCOMPATIBLE`  | The manifest's `apiVersion` is newer than the plugin API this TREK supports (currently `1`). Refuses install and activation                                                                                                                                  | **No** — the host genuinely lacks that API                         |
 | `NO_COMPATIBLE_UPDATE`      | An update was requested but no published version is both newer *and* runnable on this TREK. The plugin keeps running on its current code                                                                                                                     | n/a — nothing was changed                                          |
 
-Only `SIGNATURE_KEY_CHANGED` gets an override (`POST /api/admin/plugins/:id/retrust`),
+Only `SIGNATURE_KEY_CHANGED` gets a per-plugin override (`POST /api/admin/plugins/:id/retrust`),
 which re-pins the key **and** updates in one call — and the artifact must still verify
 under the new key, so a re-trust only ever moves the pin from one *verified* key to
 another. The other three mean the bytes are not what the author signed; there is **no
 override button at all** for them. An admin confirming a rotation sees both key
-fingerprints, to check the new one with you out of band.
+fingerprints, to check the new one with you out of band. The two `TREK_VERSION_*`
+codes have no button either; an operator can only lift them server-wide with
+`TREK_PLUGINS_IGNORE_TREK_RANGE=1` (TREK ≥ 4.3), which downgrades them to a logged,
+admin-visible warning — see [manifest.md](manifest.md).
 
 ## When `submit` / `publish` can't open the PR
 

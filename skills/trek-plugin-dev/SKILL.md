@@ -387,6 +387,8 @@ requesting user** (route-like ctx, 15 s timeout). See
   `TREK_PLUGIN_ALLOW_PRIVATE_EGRESS=on` (lifts the SSRF block on internal
   addresses), `TREK_PLUGIN_PERMISSIONS=off` (weakens the OS fs/child sandbox),
   `TREK_PLUGIN_REGISTRY_URL` (override registry source);
+  `TREK_PLUGINS_IGNORE_TREK_RANGE=1` (TREK ≥ 4.3) turns the `trek`-range gate into a
+  warning — see the range bullet below;
   `TREK_PLUGINS_DEV_LINK=1` enables the **DEV-ONLY** dev-link workflow
   (link/reload a local build against real data — off by default, **never set in
   production**;
@@ -407,10 +409,18 @@ requesting user** (route-like ctx, 15 s timeout). See
   dev-link) when the running TREK is outside your range, and *activation* re-checks
   it — so a plugin installed on 3.3 stops starting once the operator upgrades past
   the range's upper bound. It stays installed and visible, switched off, with the
-  reason shown. There is **no admin override**: the range is your own statement
-  that the plugin won't work there. `"install latest"` resolves to the newest
-  version this TREK can run, and an update that would drag a working plugin *out*
-  of compatibility is refused rather than performed.
+  reason shown. There is **no per-install admin override**: the range is your own
+  statement that the plugin won't work there. `"install latest"` resolves to the
+  newest version this TREK can run, and an update that would drag a working plugin
+  *out* of compatibility is refused rather than performed.
+  The one escape hatch is **operator-level** (TREK ≥ 4.3): with
+  `TREK_PLUGINS_IGNORE_TREK_RANGE=1` set on the server, every gate warns instead
+  of refusing (a missing range is tolerated too), "install latest" takes the newest
+  *published* version, each bypass is logged and returned as a `trekRangeBypassed`
+  marker, and the admin sees an **Install anyway** warning dialog plus a persistent
+  chip on the row saying the plugin runs outside its range and may, in rare cases,
+  corrupt data. Never tell users to set it — ship the range bump. It does not lift
+  the `apiVersion` gate.
 - **Instance-scoped settings actions need `trek` `>=4.2.0`.** A host older than that
   ignores an action's `scope` and renders the button on every user's settings page instead
   (running it as each user) — see [references/manifest.md](references/manifest.md).
