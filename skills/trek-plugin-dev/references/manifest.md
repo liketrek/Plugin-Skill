@@ -65,9 +65,11 @@ now treats your range as a hard contract, in both directions:
   legitimately installed on TREK 3.3 is still sitting on disk after the operator
   upgrades to 4.0, and if you declared `<4.0.0` it will now refuse to start. It
   stays installed and listed, switched off, showing the reason.
-- **There is no admin override.** The range is your own statement that the plugin
-  does not work there, so there is nothing for an operator to verify and wave
-  through (contrast a rotated signing key, which *is* re-trustable).
+- **There is no per-install admin override.** The range is your own statement
+  that the plugin does not work there, so there is nothing for an operator to
+  verify and wave through (contrast a rotated signing key, which *is*
+  re-trustable). The only escape hatch is server-wide: `TREK_PLUGINS_IGNORE_TREK_RANGE=1`
+  (TREK ≥ 4.3) turns every gate above into a warning — see below.
 
 Two consequences worth designing around:
 
@@ -91,6 +93,23 @@ guaranteed on every *versioned* host.
 Failures surface as `TREK_VERSION_INCOMPATIBLE` (range excludes this TREK) or
 `TREK_VERSION_UNKNOWN` (no range declared) — see
 [publishing.md](publishing.md).
+
+**The operator escape hatch (TREK ≥ 4.3).** An operator stuck on a plugin whose
+author has not yet updated its range can set `TREK_PLUGINS_IGNORE_TREK_RANGE=1`
+on the server. Then, instead of refusing, every gate — registry picker, the
+post-extraction re-check, sideload, dev-link, activation — logs a warning and
+lets the plugin through; a manifest with **no** range is tolerated the same way,
+and "install latest" takes the newest *published* version rather than the newest
+compatible one. The install/update/upload/link response carries a
+`trekRangeBypassed: { trekRange, hostVersion }` marker, and the admin panel shows a
+*Version checks off* pill, an **Install anyway** warning dialog before (or, for a
+sideload/dev-link/update, right after) the install, and a persistent chip on the
+row. The warning tells the admin your range was not updated for their TREK, that
+nothing guarantees the plugin works, and that a mismatched plugin can in rare
+cases corrupt TREK data. Treat a bug report from such an instance accordingly:
+ask for the log line (`[plugins] <id> declares TREK … continuing because
+TREK_PLUGINS_IGNORE_TREK_RANGE is set`) and fix the range, don't recommend the
+switch. The `apiVersion` gate is **never** bypassed by it.
 
 ## Permissions catalog (complete)
 

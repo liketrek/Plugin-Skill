@@ -691,8 +691,9 @@ code**, e.g. `"PERMISSION_DENIED: …"` — catch and match on that.
   `routes[]`). Implement the flow yourself with your own routes: an `auth:false`
   callback whose redirect is a relative in-app path (see Routes).
 - Version compatibility: the manifest's **`trek` range IS enforced** (TREK ≥ 3.4.0)
-  at install and at activation, with no admin override — see
-  [manifest.md](manifest.md). **`apiVersion` is enforced too**: it must be a
+  at install and at activation, with no per-install admin override (only the
+  operator-wide `TREK_PLUGINS_IGNORE_TREK_RANGE=1` switch, TREK ≥ 4.3, downgrades
+  it to a warning) — see [manifest.md](manifest.md). **`apiVersion` is enforced too**: it must be a
   positive integer, and a manifest declaring a plugin-API version newer than the
   host supports is refused at install and won't activate
   (`API_VERSION_INCOMPATIBLE`) — moot while v1 is the only API, load-bearing the
