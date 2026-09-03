@@ -1,6 +1,6 @@
 {
   "name": "trek-plugin-dev",
-  "version": "4.1.1",
+  "version": "4.2.0",
   "description": "Build, test, sign, and publish plugins for TREK, the self-hosted travel planner.",
   "author": {
     "name": "fbnlrz",
